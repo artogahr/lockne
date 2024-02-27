@@ -1,0 +1,5 @@
+edition = "2021"
+
+[workspace]
+resolver = "2"
+members = ["lockne-server", "lockne-client", "lockne-lib"]
