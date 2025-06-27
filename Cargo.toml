@@ -2,5 +2,75 @@
 name = "lockne"
 version = "0.1.0"
 edition = "2024"
+authors = ["Artoghrul Gahramanli <arto@gahr.io>"]
+description = "Dynamic Per-Application VPN Tunneling with eBPF and Rust"
+license = "MIT"
+repository = "https://github.com/artogahr/lockne"
+homepage = "https://github.com/artogahr/lockne"
+documentation = "https://docs.rs/lockne"
+readme = "README.md"
+keywords = ["vpn", "ebpf", "networking", "wireguard", "tui"]
+categories = ["network-programming", "system"]
 
 [dependencies]
+# Core async runtime
+tokio = { features = ["full"] }
+
+# CLI argument parsing
+clap = { features = ["derive"] }
+
+# Serialization
+serde = { features = ["derive"] }
+serde_json = "*"
+toml = "*"
+
+# Logging and tracing (simplified)
+tracing = "*"
+tracing-subscriber = "*"
+
+# Error handling (simplified)
+anyhow = "*"
+
+# Terminal UI
+ratatui = "*"
+crossterm = "*"
+
+# Network programming
+pnet = "*"
+socket2 = "*"
+
+# eBPF framework
+aya = "*"
+
+# System information
+sysinfo = "*"
+
+# Time handling
+chrono = { features = ["serde"] }
+
+# Configuration
+config = "*"
+
+# Optional: WireGuard integration (when available)
+# wireguard-rs = "*"
+
+[dev-dependencies]
+# Testing
+tokio-test = "*"
+
+# Mocking for tests
+mockall = "*"
+
+# Integration testing
+tempfile = "*"
+
+[profile.release]
+# Optimize for performance
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.dev]
+# Faster compilation for development
+opt-level = 0
+debug = true
