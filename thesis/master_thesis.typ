@@ -43,7 +43,7 @@
   #text(14pt)[Department of Information Technologies] // Fill this in
   
   #v(3cm)
-  #image("czu-logo.png", width: 4cm) // You will need to download the CZU logo and save it as "cuz-logo.png"
+  #image("czu-logo.png", width: 8cm) // You will need to download the CZU logo and save it as "cuz-logo.png"
 
   #v(3cm)
   #text(18pt, weight: "bold")[Master's Thesis]
@@ -53,7 +53,7 @@
     #text(16pt)[Lockne: Dynamic Per-Application VPN Tunneling with eBPF and Rust]
   ]
 
-  #v(3cm)
+  #v(2cm)
   #text(14pt)[Artoghrul Gahrammanli, BSc.]
 
   #v(1fr)
