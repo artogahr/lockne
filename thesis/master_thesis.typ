@@ -171,6 +171,7 @@
 #include "chapters/02-objectives.typ"
 
 // THIS IS YOUR FOCUS FOR THE NEXT WEEK
+#pagebreak()
 #include "chapters/03-literature-review.typ"
 
 // These are placeholders for your future work
