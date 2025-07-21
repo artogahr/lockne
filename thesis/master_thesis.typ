@@ -8,7 +8,6 @@
 #set page(
   paper: "a4",
   numbering: "1",
-  // Margins from your first guideline PDF
   margin: (top: 30mm, bottom: 25mm, left: 35mm, right: 20mm),
 )
 #set text(
@@ -22,14 +21,14 @@
   first-line-indent: 1.25cm,
 )
 #show heading: it => {
-  // Add space before headings
   if it.level > 1 { v(0.5em) } else { v(1.5em) }
-  // Set heading font and style
   strong(it.body)
-  v(0.5em) // Space after heading
+  v(0.5em)
 }
 
-// ===============================================
+#let bibliography-style = "iso-690-numeric"
+
+//===========================================
 // PAGE 1: TITLE PAGE
 // Replicates the official template exactly.
 // ===============================================
