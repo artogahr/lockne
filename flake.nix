@@ -1,5 +1,5 @@
 {
-  description = "Dev shell for Lockne (Rust + Aya)";
+  description = "Lockne - Aya eBPF development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -21,11 +21,29 @@
     in
     {
       devShells.${system}.default = pkgs.mkShell {
+        # ----------------------------------------------------------------
+        # Packages added to PATH for interactive use in the dev shell
+        # ----------------------------------------------------------------
         packages = [
           rust.toolchain
-          pkgs.openssl
-          pkgs.pkg-config
           pkgs.cargo-generate
+          pkgs.bpftools
+        ];
+
+        # ----------------------------------------------------------------
+        # Build-time dependencies (needed to compile)
+        # ----------------------------------------------------------------
+        nativeBuildInputs = [
+          pkgs.llvmPackages.clang # Clang compiler
+          pkgs.llvmPackages.libclang # LLVM C API libraries
+          pkgs.pkg-config # Helps Rust crates find C libraries like OpenSSL
+        ];
+
+        # ----------------------------------------------------------------
+        # Runtime dependencies (needed when running)
+        # ----------------------------------------------------------------
+        buildInputs = [
+          pkgs.openssl
         ];
       };
     };

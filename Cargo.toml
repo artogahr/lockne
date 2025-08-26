@@ -13,56 +13,7 @@ keywords = ["vpn", "ebpf", "networking", "wireguard", "tui"]
 categories = ["network-programming", "system"]
 
 [dependencies]
-# Core async runtime
-tokio = { features = ["full"] }
-
-# CLI argument parsing
-clap = { features = ["derive"] }
-
-# Serialization
-serde = { features = ["derive"] }
-serde_json = "*"
-toml = "*"
-
-# Logging and tracing (simplified)
-tracing = "*"
-tracing-subscriber = "*"
-
-# Error handling (simplified)
-anyhow = "*"
-
-# Terminal UI
-ratatui = "*"
-crossterm = "*"
-
-# Network programming
-pnet = "*"
-socket2 = "*"
-
-# eBPF framework
 aya = "*"
-
-# System information
-sysinfo = "*"
-
-# Time handling
-chrono = { features = ["serde"] }
-
-# Configuration
-config = "*"
-
-# Optional: WireGuard integration (when available)
-# wireguard-rs = "*"
-
-[dev-dependencies]
-# Testing
-tokio-test = "*"
-
-# Mocking for tests
-mockall = "*"
-
-# Integration testing
-tempfile = "*"
 
 [profile.release]
 # Optimize for performance
