@@ -21,6 +21,7 @@
     in
     {
       devShells.${system}.default = pkgs.mkShell {
+        shell = pkgs.fish;
         # ----------------------------------------------------------------
         # Packages added to PATH for interactive use in the dev shell
         # ----------------------------------------------------------------
