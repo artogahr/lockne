@@ -38,6 +38,7 @@
           pkgs.llvmPackages.clang # Clang compiler
           pkgs.llvmPackages.libclang # LLVM C API libraries
           pkgs.pkg-config # Helps Rust crates find C libraries like OpenSSL
+          pkgs.bpf-linker
         ];
 
         # ----------------------------------------------------------------
