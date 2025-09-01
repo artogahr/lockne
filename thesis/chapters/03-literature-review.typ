@@ -22,9 +22,6 @@
 
 Before designing and building Lockne, it is essential to understand the technologies that make it possible and the context in which it will operate. This review surveys the technical landscape, focusing on the three pillars of the project: the eBPF framework for kernel programmability, the WireGuard protocol for secure and performant tunneling, and the Rust language for building a reliable control plane. Critically, it also analyzes existing approaches to application-specific traffic control, identifying their limitations. The goal is to establish a clear justification for Lockne's architecture by demonstrating how it addresses a distinct gap left by current solutions.
 
-// SECTION STATUS: Complete (3 pages) ✓
-// This section is good as-is, no expansion needed
-
 == The Kernel's New Superpower: An Overview of eBPF
 
 The core mechanism behind Lockne is the extended Berkeley Packet Filter (eBPF). To understand its importance, one must see it not just as a tool, but as a fundamental shift in how the Linux kernel can be extended. As described by Brendan Gregg, eBPF allows sandboxed programs to run directly within the kernel in response to specific events, without requiring changes to the kernel source code or loading kernel modules @greggBpfPerformanceTools2019. This provides a safe, performant way to implement custom logic at the lowest levels of the operating system. He's also described eBPF as "like putting JavaScript into the Linux kernel" @EBPFDocumentary.
@@ -63,9 +60,6 @@ To build a system like Lockne, we must use three key eBPF concepts:
 
 - *Maps:* Maps are the communication bridge. They are efficient key-value data structures that can be accessed from both eBPF programs running in the kernel and from userspace applications. For Lockne, maps are the "brain" of the operation. The Rust daemon will write routing policies (e.g., "PID 1234 -> WireGuard interface A") into a map. The eBPF program in the kernel will then read from this map to make its routing decisions in real-time. This allows for dynamic policy updates without reloading the kernel program.
 
-// SECTION STATUS: Complete (2 pages) ✓
-// This section is good as-is, no expansion needed
-
 == Secure and Performant Tunneling: The WireGuard Protocol
 
 Lockne does not just redirect traffic; it routes it into a secure tunnel. The choice of VPN protocol is therefore critical. This section reviews WireGuard, arguing that its design philosophy of simplicity, high performance, and tight kernel integration makes it the ideal foundation for Lockne's tunneling component.
@@ -80,8 +74,7 @@ WireGuard's cryptographic design represents a significant departure from traditi
 
 This cryptographic rigidity eliminates entire classes of vulnerabilities associated with cipher suite negotiation and downgrade attacks. The chosen primitives represent current best practices in cryptographic research, providing both high security and excellent performance on modern hardware. For Lockne, this design choice ensures that all tunneled traffic benefits from state-of-the-art cryptographic protection without complex configuration or performance tuning.
 
-// SECTION STATUS: Complete (2 pages) ✓
-// This section is good as-is, no expansion needed
+// TODO: Write more about WireGuard
 
 == A Foundation of Safety and Performance: The Role of Rust
 
@@ -145,6 +138,15 @@ This choice was not without its own challenges. As a younger project, `Aya`'s do
 
 // TODO: Add a new section here before "State of the Art"
 // === Process-to-Socket Mapping: The Core Challenge (TARGET: 2-3 pages)
+== Process-to-Socket Mapping: The Core Challenge
+The single most important mechanism behind how Lockne works is the ability to distinguish which networks packets are coming from which processes. Without this, it's impossible to implement the core idea of Lockne: _Per Application_ VPN Routing.
+
+Unfortunately, it's not as easy as just checking each packet in the network chain, as none of the layers of the TCP/IP stack cares about the process identifiers, nor writes them anywhere. Doing so would be wasteful and irrelevant in a vast majority of networking usecases. Therefore, we need to talk to the Linux kernel itself to be able to determine the "owners" of packets. It's still not possible to directly pin a packet to a process, however, it's possible to link a process to the network socket that sends / receives it, and it's possible to ask the kernel what process owns each socket.
+
+=== How networking works in Linux
+
+
+
 // This is THE technical challenge that makes your thesis unique. Write about:
 // 1. How Linux kernel tracks socket ownership (task_struct, socket inode numbers)
 // 2. Why you can't just "ask" which process owns a packet at TC egress hook
