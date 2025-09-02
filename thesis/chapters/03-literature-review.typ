@@ -62,19 +62,61 @@ To build a system like Lockne, we must use three key eBPF concepts:
 
 == Secure and Performant Tunneling: The WireGuard Protocol
 
-Lockne does not just redirect traffic; it routes it into a secure tunnel. The choice of VPN protocol is therefore critical. This section reviews WireGuard, arguing that its design philosophy of simplicity, high performance, and tight kernel integration makes it the ideal foundation for Lockne's tunneling component.
+Lockne's architecture redirects application traffic; it does not, by itself, encrypt it. The second critical part of the data plane is the secure tunnel into which this traffic is directed. The choice of VPN protocol is therefore very important, directly impacting the performance, security, and usability of the entire system. Lockne is designed specifically to integrate with WireGuard, arguing that its modern design philosophy, minimalist attack surface, and tight kernel integration make it the ideal foundation for the project's tunneling component. While it would be nice to have the ability to perform this functionality for all VPN types (or even all possible network interfaces), limiting the scope to Wireguard also helps simplify the implementation.
 
-WireGuard's design is centered on an aggressive pursuit of simplicity. The entire protocol is implemented in approximately 4,000 lines of C code, excluding cryptographic primitives @donenfeldWireGuardNextGeneration2017. This minimalist codebase, estimated to be two orders of magnitude smaller than that of OpenVPN or IPsec solutions, dramatically reduces the potential attack surface and simplifies security auditing @salterWireGuardVPNReview2018. This focus on a minimal, auditable design has been validated by multiple professional security audits. The simplicity extends to its operation, which uses a constrained and well-defined state machine. For the end-user, this results in a seamless "it just works" experience where tunnels are established transparently using a simple exchange of public keys. This philosophy is a core inspiration for Lockne's own design goals.
+This analysis delves into the specific architectural decisions of WireGuard that justify this choice, contrasting them with the trade-offs made by older, more established protocols.
 
-This simplicity directly enables WireGuard's second key advantage: performance. Unlike popular userspace protocols like OpenVPN, which must repeatedly copy packets between the kernel and a userspace process for encryption and decryption, WireGuard operates directly within the Linux kernel. By eliminating this context-switching overhead for every packet, it achieves significantly higher throughput and lower latency. While other in-kernel protocols like IPsec exist, WireGuard often maintains a performance edge by leveraging more modern, efficient cryptographic algorithms. This kernel-native architecture is the crucial feature for Lockne; it allows packets redirected by an eBPF program to be handed directly to the WireGuard interface within the kernel, creating the most efficient path possible from application to secure tunnel.
+=== An Aggressive Pursuit of Simplicity
 
-=== Cryptographic Design and Security Properties
+At its core, WireGuard's design is guided by a strong focus on simplicity. This is most clear in its codebase. The entire kernel-resident implementation consists of around 4,000 lines of C code, a figure that seems minimal when compared to the hundreds of thousands of lines that make up alternatives like OpenVPN or the IPsec suite @donenfeldWireGuardNextGeneration2017.
 
-WireGuard's cryptographic design represents a significant departure from traditional VPN protocols. Unlike IPsec or OpenVPN, which support numerous cipher suites and authentication methods, WireGuard deliberately restricts itself to a single, carefully chosen set of modern cryptographic primitives: Curve25519 for key exchange, ChaCha20 for symmetric encryption, Poly1305 for authentication, BLAKE2s for hashing, and SipHash24 for hashtable keys @donenfeldWireGuardNextGeneration2017.
+This is not just an aesthetic choice; it is a fundamental security principle. A smaller codebase dramatically reduces the potential attack surface and makes a full security audit not just possible, but practical @salterWireGuardVPNReview2018. The complexity of a system is a direct enemy of its security. With fewer lines of code, there are fewer places for subtle bugs to hide. This simplicity extends to its state management. WireGuard gets rid of the complex, multi-stage handshake protocols common in other VPNs. There is no concept of a user "connecting" or "disconnecting." If a peer has the correct public key, it can send encrypted data; if not, the interface stays silent, not even responding to unknown packets. This "stealthy by default" behavior makes WireGuard servers difficult to scan for online, further reducing their exposure. For the end-user, this means tunnels are established transparently and reliably, which aligns perfectly with Lockne's goal of being easy to use.
 
-This cryptographic rigidity eliminates entire classes of vulnerabilities associated with cipher suite negotiation and downgrade attacks. The chosen primitives represent current best practices in cryptographic research, providing both high security and excellent performance on modern hardware. For Lockne, this design choice ensures that all tunneled traffic benefits from state-of-the-art cryptographic protection without complex configuration or performance tuning.
+=== Kernel-Native Performance
 
-// TODO: Write more about WireGuard
+WireGuard's second key advantage is its raw performance. This is a direct result of its design as a native Linux kernel module. Popular VPNs like OpenVPN operate mostly in userspace. For every single network packet to be encrypted, it must take an expensive journey:
+1. The packet is created by an application and given to the kernel.
+2. The kernel's networking stack sends it to a virtual `tun` interface.
+3. The packet is copied from the kernel to the OpenVPN userspace program.
+4. The OpenVPN program encrypts the packet.
+5. The now-encrypted packet is copied back to the kernel.
+6. The kernel sends this new packet out the physical network interface.
+
+This back-and-forth, known as context switching, happens for every packet and creates a major performance bottleneck. WireGuard avoids this entirely. Because it lives inside the kernel, packets sent to the WireGuard interface are encrypted and sent on their way without ever leaving the kernel's high-performance environment. This is the key synergy for Lockne: packets redirected by our eBPF program can be handed directly to the WireGuard interface, creating the most efficient path possible from an application to a secure tunnel. This in-kernel design allows WireGuard to achieve much higher throughput and lower latency, making it great for high-bandwidth activities that would be too slow over a traditional VPN.
+
+=== Opinionated Cryptography
+
+Many security problems in the past came from flawed or outdated cryptography. Older protocols like IPsec and TLS were often designed with "crypto-agility," meaning they support a long list of encryption algorithms that can be negotiated between peers. While flexible, this is a common source of weakness. It opens the door to downgrade attacks, where an attacker tricks two sides into using an older, weaker algorithm.
+
+WireGuard rejects this model. Instead, it is "opinionated" and uses a single, fixed set of modern, high-speed cryptographic primitives: Curve25519 for key exchange, ChaCha20 for symmetric encryption, Poly1305 for authentication, and BLAKE2s for hashing @donenfeldWireGuardNextGeneration2017. There is no negotiation to attack. This rigidity eliminates entire classes of vulnerabilities. If a flaw were ever found in one of the primitives, the solution would be to create a new version of the WireGuard protocol itself. This philosophy provides a much stronger promise of security over the long term and ensures that all tunneled traffic benefits from state-of-the-art protection without complex setup.
+
+=== Architectural Synergy: A Natural Fit for eBPF Redirection
+
+Beyond its standalone features, WireGuard's design as a kernel network interface makes it uniquely suited for a modern eBPF-based system like Lockne. The critical link between the two technologies is a powerful eBPF helper function: `bpf_redirect()`.
+
+The Linux kernel identifies every network interface (like `eth0` or `wlan0`) with a simple, unique number called an interface index, or `ifindex`. The `bpf_redirect()` function allows an eBPF program to take a packet it is processing and, instead of letting it continue on its original path, immediately forward it to the `ifindex` of another interface.
+
+This mechanism is the core of Lockne's data plane. The process works as follows:
+- The Lockne userspace daemon identifies the `ifindex` of the target WireGuard interface (e.g., `wg0`).
+- It places this `ifindex` into an eBPF map, linking it to a specific application or process.
+- When the eBPF program in the kernel intercepts a packet from that application, it looks in the map, retrieves the `ifindex`, and calls `bpf_redirect()`.
+- The packet is instantly handed off to the WireGuard interface, all without leaving the kernel.
+
+This direct, in-kernel handoff is what makes the combination of eBPF and WireGuard so efficient. It avoids all the overhead of userspace proxies and provides a clean, programmable way to selectively push traffic into the secure tunnel.
+
+=== Comparison with Established VPN Protocols
+
+To understand WireGuard's importance, it is helpful to contrast it with the protocols that came before it.
+
+- *IPsec:* The Internet Protocol Security suite is the "enterprise standard" for securing network traffic. While powerful, IPsec is known for being very complex. It is not a single protocol but a large framework of many components. This complexity makes it difficult to configure correctly, and mistakes can easily lead to security holes @fergusonPracticalCryptography2003. WireGuard's simplicity is a direct response to this legacy of complexity.
+
+- *OpenVPN:* As a userspace tool built on the OpenSSL library, OpenVPN has been a reliable choice for years. Its main benefit is its ability to run over TCP, which can help bypass restrictive firewalls. However, as noted earlier, its userspace design comes with a significant performance cost. Its configuration is also far more complex than WireGuard's, presenting a larger attack surface.
+
+In this context, WireGuard is a major step forward. It provides the in-kernel performance that was once only available with complex IPsec setups, but with a level of simplicity and security that surpasses even userspace tools.
+
+=== Synthesis: The Ideal Tunnel for an eBPF Data Plane
+
+The design of WireGuard aligns perfectly with the goals of Lockne. Its in-kernel nature provides the high-performance path needed to ensure that the redirection performed by eBPF does not create a bottleneck. Its simple, public-key-based identity system is straightforward for the Rust control plane to work with. Finally, its modern cryptography ensures that all traffic routed by Lockne is well-protected without complex user setup. It is, for all these reasons, the ideal tunneling backend for a modern, performance-focused network control system.
 
 == A Foundation of Safety and Performance: The Role of Rust
 
