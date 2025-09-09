@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
     fenix.url = "github:nix-community/fenix";
     fenix.inputs.nixpkgs.follows = "nixpkgs";
   };
@@ -11,42 +12,40 @@
     {
       self,
       nixpkgs,
+      flake-utils,
       fenix,
       ...
     }:
-    let
-      system = "x86_64-linux";
-      pkgs = import nixpkgs { inherit system; };
-      rust = fenix.packages.${system}.stable;
-    in
-    {
-      devShells.${system}.default = pkgs.mkShell {
-        shell = pkgs.fish;
-        # ----------------------------------------------------------------
-        # Packages added to PATH for interactive use in the dev shell
-        # ----------------------------------------------------------------
-        packages = [
-          rust.toolchain
-          pkgs.cargo-generate
-          pkgs.bpftools
-        ];
+    flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        pkgs = import nixpkgs { inherit system; };
 
-        # ----------------------------------------------------------------
-        # Build-time dependencies (needed to compile)
-        # ----------------------------------------------------------------
-        nativeBuildInputs = [
-          pkgs.llvmPackages.clang # Clang compiler
-          pkgs.llvmPackages.libclang # LLVM C API libraries
-          pkgs.pkg-config # Helps Rust crates find C libraries like OpenSSL
-          pkgs.bpf-linker
-        ];
+        rust-toolchain = fenix.packages.${system}.complete.toolchain;
 
-        # ----------------------------------------------------------------
-        # Runtime dependencies (needed when running)
-        # ----------------------------------------------------------------
-        buildInputs = [
-          pkgs.openssl
-        ];
-      };
-    };
+      in
+      {
+        devShells.default = pkgs.mkShell {
+          shell = pkgs.fish;
+
+          buildInputs = [
+            rust-toolchain
+
+            pkgs.rustup
+
+            pkgs.cargo-generate
+            pkgs.bpftools
+            pkgs.bpf-linker
+
+            pkgs.llvmPackages.clang
+            pkgs.llvmPackages.libclang
+            pkgs.pkg-config
+
+            pkgs.zlib
+            pkgs.elfutils
+            pkgs.openssl
+          ];
+        };
+      }
+    );
 }
