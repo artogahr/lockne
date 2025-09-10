@@ -3,7 +3,7 @@
 // ===============================================
 #set document(
   author: "Artoghrul Gahramanli, BSc.",
-  title: "Lockne: Dynamic Per-Application VPN Tunneling with eBPF and Rust"
+  title: "Lockne: Dynamic Per-Application VPN Tunneling with eBPF and Rust",
 )
 #set page(
   paper: "a4",
@@ -13,7 +13,7 @@
 #set text(
   font: "New Computer Modern",
   size: 12pt,
-  lang: "en"
+  lang: "en",
 )
 #set par(
   justify: true,
@@ -21,9 +21,14 @@
   first-line-indent: 1.25cm,
 )
 #show heading: it => {
-  if it.level > 1 { v(0.5em) } else { v(1.5em) }
-  strong(it.body)
-  v(0.5em)
+  // the block is so that headers aren't left on a previous page.
+  // If there's no space for some text after the header,
+  // it will get moved to the next page
+  block(breakable: false, {
+    if it.level > 1 { v(0.5em) } else { v(1.5em) }
+    strong(it.body)
+    v(0.5em)
+  })
 }
 
 #let bibliography-style = "iso-690-numeric"
@@ -40,7 +45,7 @@
   #text(14pt)[Faculty of Economics and Management]
   #v(1em)
   #text(14pt)[Department of Information Technologies] // Fill this in
-  
+
   #v(3cm)
   #image("czu-logo.png", width: 8cm) // You will need to download the CZU logo and save it as "cuz-logo.png"
 
@@ -49,7 +54,9 @@
 
   #v(2cm)
   #block(width: 80%)[
-    #text(16pt)[Lockne: Dynamic Per-Application VPN Tunneling with eBPF and Rust]
+    #text(
+      16pt,
+    )[Lockne: Dynamic Per-Application VPN Tunneling with eBPF and Rust]
   ]
 
   #v(2cm)
@@ -144,7 +151,7 @@
 #pagebreak()
 
 
-      
+
 // ===============================================
 // TABLE OF CONTENTS
 // Typst will generate this automatically!
@@ -153,11 +160,11 @@
 #outline(
   title: [Table of content],
   depth: 3,
-  indent: auto
+  indent: auto,
 )
 #pagebreak()
 
-    
+
 
 
 // ===============================================
