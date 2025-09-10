@@ -241,145 +241,62 @@ A key architectural decision was the choice of framework for integrating Rust wi
 
 `Aya` is a pure-Rust eBPF library and toolchain that allows both the userspace control plane and the in-kernel eBPF programs to be written entirely in Rust. This unified approach provides significant advantages in terms of compile-time safety, especially for data structures shared between userspace and the kernel, and it simplifies the build and deployment process by removing dependencies on C libraries. A full justification for this choice, including a detailed comparison of the toolchain ecosystems, is provided in the preceding chapter on the eBPF programming model.
 
-// TODO: Add a new section here before "State of the Art"
-// === Process-to-Socket Mapping: The Core Challenge (TARGET: 2-3 pages)
 == Process-to-Socket Mapping: The Core Challenge
-The single most important mechanism behind how Lockne works is the ability to distinguish which networks packets are coming from which processes. Without this, it's impossible to implement the core idea of Lockne: _Per Application_ VPN Routing.
 
-Unfortunately, it's not as easy as just checking each packet in the network chain, as none of the layers of the TCP/IP stack cares about the process identifiers, nor writes them anywhere. Doing so would be wasteful and irrelevant in a vast majority of networking usecases. Therefore, we need to talk to the Linux kernel itself to be able to determine the "owners" of packets. It's still not possible to directly pin a packet to a process, however, it's possible to link a process to the network socket that sends / receives it, and it's possible to ask the kernel what process owns each socket.
+The central premise of Lockne is its ability to route network traffic on a per-application basis. To achieve this, the system must be able to answer a seemingly simple question for every single network packet: "Which process created this?" This task, known as process-to-socket mapping, is the single most important technical challenge that this thesis addresses.
 
-=== How networking works in Linux
+While the question is simple, the answer is profoundly complex within the context of a high-performance networking data path. The Linux kernel, for reasons of efficiency and design, does not attach process identifiers to network packets. A packet is an anonymous unit of data from the perspective of the lower networking layers. Therefore, a robust and performant mechanism must be built to reconstruct this link. This section provides a detailed analysis of this challenge, exploring the internal workings of the Linux kernel, the limitations of traditional approaches, and the modern eBPF-based architecture that Lockne implements to solve the problem.
 
+=== A Packet's Journey and the Loss of Context
 
+To understand why this problem is difficult, it is essential to follow the journey of a packet from its creation in an application to its interception point in the kernel.
 
-// This is THE technical challenge that makes your thesis unique. Write about:
-// 1. How Linux kernel tracks socket ownership (task_struct, socket inode numbers)
-// 2. Why you can't just "ask" which process owns a packet at TC egress hook
-// 3. Different approaches:
-//    - SO_MARK socket option and how it works
-//    - Socket cookies and their limitations
-//    - Cgroup-based tracking (BPF_CGROUP_INET_SOCK_CREATE hook)
-//    - Process hierarchy challenges (parent/child processes)
-// 4. Performance implications of each approach
-// Read: Linux kernel networking code, especially net/socket.c and net/core/sock.c
-// Also read existing eBPF networking papers that deal with process identification
+1. *Userspace Creation:* An application like a web browser opens a socket, which the kernel represents as a file descriptor. When the application writes data to this file descriptor, a system call is invoked, transferring the data and control across the userspace-kernel boundary.
+2. *Socket Layer:* Inside the kernel, the VFS (Virtual File System) layer directs the operation to the socket subsystem. Here, the kernel identifies the `struct sock` associated with the file descriptor. This crucial structure holds all the state for a connection (IP addresses, ports, TCP state, etc.).
+3. *Packet Allocation:* The kernel allocates a `sk_buff` (socket buffer), the core structure used to represent a network packet throughout its life in the kernel. The application data is copied into the `sk_buff`, and a pointer to the parent `struct sock` is stored within it.
+4. *Network Stack Traversal:* The `sk_buff` is passed down through the protocol layers (TCP, then IP), where each layer adds its respective header.
+5. *Egress and the TC Hook:* Finally, the fully formed packet is passed to the Traffic Control (TC) subsystem for scheduling on the physical network device. It is at the TC egress hook that Lockne's `classifier` program intercepts it.
 
-// === Performance Considerations and Benchmarking (TARGET: 2 pages)
-// Write about:
-// 1. What metrics matter: latency (packet processing time), throughput, CPU overhead
-// 2. Benchmarking methodologies for networking tools (iperf3, netperf, custom tools)
-// 3. Expected bottlenecks in your architecture (map lookups, context switches)
-// 4. How to fairly compare kernel-space vs userspace solutions
-// Read: Network performance papers, eBPF performance studies
+At the moment of interception, our eBPF program has the `sk_buff`. While the `sk_buff` contains a pointer back to the `struct sock`, the direct, trivial link to the originating `task_struct` (the kernel's representation of a process) is gone. While it is theoretically possible to traverse kernel memory from the `sock` backwards to find the process, this is a complex, unstable, and slow operation that the eBPF verifier rightfully prohibits in a fast-path networking program. The link is severed for performance reasons, and we must therefore establish a new one.
 
-// === Security Model and Threat Analysis (TARGET: 1-2 pages)
-// Discuss:
-// 1. What threats does Lockne protect against vs introduce?
-// 2. eBPF verifier security guarantees
-// 3. Privilege requirements and attack surface
-// 4. Traffic analysis resistance properties
-// Read: eBPF security papers, VPN security analyses
+=== Traditional Approaches and Their Limitations
 
-// TODO: Add a new section here before "State of the Art"
-// WEEK 2 TASK (Monday-Tuesday): Process-to-Socket Mapping: The Core Challenge
-// TARGET: 2-3 pages | PRIORITY: HIGH (this is your main technical contribution)
-//
-// RESEARCH NEEDED:
-// 1. Read Linux kernel source:
-//    - net/socket.c (how sockets are created and tracked)
-//    - include/linux/net.h (socket structures)
-//    - net/core/sock.c (socket ownership tracking)
-// 2. Read eBPF networking papers that mention process identification
-// 3. Study existing tools: netstat source code, ss command implementation
-//
-// WHAT TO WRITE ABOUT:
-// 1. The fundamental problem:
-//    - At TC egress hook, you have an sk_buff (packet) but need to know which process created it
-//    - Linux kernel doesn't make this information easily available
-//    - Explain why this is harder than it sounds
-//
-// 2. Existing approaches and their limitations:
-//    - SO_MARK socket option: requires application cooperation
-//    - Socket cookies: limited lifetime, not reliable for long connections
-//    - cgroup-based tracking: requires process hierarchy understanding
-//    - Netlink socket monitoring: reactive, not proactive
-//
-// 3. Your planned solution:
-//    - Combination of cgroup hooks and TC hooks
-//    - Process creation monitoring with BPF_CGROUP_INET_SOCK_CREATE
-//    - Socket-to-process mapping maintenance in eBPF maps
-//
-// 4. Performance implications:
-//    - Map lookup latency for every packet
-//    - Memory overhead of maintaining socket mappings
-//    - Cleanup challenges for short-lived connections
-//
-// PAPERS TO FIND AND READ:
-// - Search Google Scholar for "eBPF socket tracking"
-// - Look for papers on "application-aware traffic engineering"
-// - Find any papers that mention SO_MARK or socket cookies
-//
-// WRITING TIP: Start with the problem statement, then explain why obvious solutions don't work
+Before the advent of eBPF, several methods existed to attempt this mapping, each with significant drawbacks that make them unsuitable for Lockne.
 
-// TODO: Add another section here
-// WEEK 2 TASK (Wednesday-Thursday): Performance Considerations and Benchmarking
-// TARGET: 2 pages | PRIORITY: MEDIUM
-//
-// RESEARCH NEEDED:
-// 1. Find eBPF performance papers (search "eBPF performance evaluation")
-// 2. Read about network benchmarking methodologies (iperf3, netperf documentation)
-// 3. Look up papers comparing kernel-space vs userspace network processing
-//
-// WHAT TO WRITE ABOUT:
-// 1. Metrics that matter for per-application routing:
-//    - Packet processing latency (nanoseconds added per packet)
-//    - Throughput degradation under load
-//    - CPU overhead (% CPU for routing decisions)
-//    - Memory overhead (eBPF map sizes)
-//
-// 2. Benchmarking methodology:
-//    - How to measure packet latency in eBPF programs
-//    - Controlled test environments
-//    - Statistical significance considerations
-//
-// 3. Expected performance characteristics:
-//    - eBPF map lookup performance (hash vs array maps)
-//    - Context switch overhead in userspace solutions
-//    - WireGuard processing overhead
-//
-// 4. Comparison framework:
-//    - How to fairly compare against proxychains (userspace)
-//    - Baseline measurements (no routing)
-//    - Different workload types (bulk transfer vs interactive)
+==== Userspace Enumeration (`ss`, `lsof`)
+The most common approach, used by command-line tools like `ss` and `lsof`, operates by correlating information from the `/proc` filesystem. The process involves two stages: first, reading a list of all active network sockets from files like `/proc/net/tcp`, which lists each socket's unique inode number. Second, the tool must iterate through every process directory (`/proc/[PID]/fd/`) and inspect every symbolic link to find which process holds a file descriptor that links to that socket inode.
 
-// TODO: Add another section here
-// WEEK 3 TASK (Wednesday-Thursday): Security Model and Threat Analysis
-// TARGET: 1-2 pages | PRIORITY: MEDIUM
-//
-// RESEARCH NEEDED:
-// 1. Read eBPF security papers (verifier guarantees, attack surface)
-// 2. Look up VPN security analysis papers
-// 3. Find papers on traffic analysis attacks
-//
-// WHAT TO WRITE ABOUT:
-// 1. Security guarantees provided:
-//    - eBPF verifier prevents kernel crashes
-//    - WireGuard cryptographic properties
-//    - Traffic encryption and tunnel security
-//
-// 2. Security risks introduced:
-//    - Privilege escalation through eBPF programs
-//    - Information leakage through process tracking
-//    - Attack surface of the control plane
-//
-// 3. Threat model:
-//    - What attacks does Lockne defend against?
-//    - What new attack vectors might it introduce?
-//    - Privilege requirements (root access implications)
-//
-// 4. Comparison with alternatives:
-//    - Security vs usability tradeoffs
-//    - Trust model compared to system-wide VPNs
+While accurate, this method is catastrophically slow for real-time packet processing. It requires multiple file system reads and a full scan of the process table. Performing this work for every single outgoing packet would cripple system performance.
+
+==== Socket Marking (`SO_MARK`) and Policy Routing
+The kernel's routing subsystem has long supported a mechanism for policy-based routing. An application can use the `setsockopt` system call with the `SO_MARK` option to "tag" all packets originating from a specific socket with a numerical mark. This mark can then be used by the kernel's `iptables` firewall or its policy routing rules (`ip rule`) to direct these tagged packets into a different routing table, which could then route them through a VPN.
+
+The fundamental weakness of this approach is that it is not transparent; it requires the *application to cooperate*. The application's source code must be modified to add the `setsockopt` call. This is impossible for closed-source applications and impractical to expect from all open-source ones, making it a non-starter for a general-purpose tool like Lockne.
+
+=== The Modern eBPF Architecture: Stateful Tracking
+
+Lockne solves this challenge by adopting the modern eBPF paradigm: instead of performing an expensive lookup for every packet, it proactively records the mapping at the moment a connection is created. This is achieved with a "team" of two eBPF programs that communicate via a shared map.
+
+==== The `cgroup/sock_addr` Notary
+The first program is a `cgroup/sock_addr` program attached to the root control group. This program acts as a "notary," as its hook is triggered whenever any process on the system performs a socket operation like `connect()`. At this moment, the program has access to all the necessary context:
+- It can get the Process ID (PID) of the current process using the `bpf_get_current_pid_tgid()` helper.
+- It can get a unique, stable identifier for the socket for the duration of its lifetime, known as the "socket cookie," using `bpf_get_socket_cookie()`.
+
+The program's sole job is to insert this pairing—`{socket_cookie -> PID}`—into a shared eBPF hash map.
+
+==== The `tc` Traffic Cop and the Socket Cookie
+The second program is the `tc` classifier running at the egress hook. For every packet it processes, it performs the following fast and simple steps:
+1. It extracts the same socket cookie from the packet's `sk_buff`. This cookie is carried with the packet.
+2. It performs a single, highly efficient hash map lookup using the cookie as the key.
+3. If a corresponding PID is found in the map, the program knows the packet's owner. It can then consult a second "policy" map to decide if this PID's traffic should be redirected.
+
+This design is highly performant because the expensive work of associating a process with a connection is done only once, when the connection is initiated. The per-packet logic on the fast path is reduced to a single map lookup.
+
+==== Acknowledged Challenges in State Management
+This stateful approach is powerful, but it introduces its own set of challenges that a robust implementation must address:
+- *Process Hierarchy:* If a monitored application (e.g., Firefox) spawns a child process (e.g., a media decoder), that child process will have a different PID. A complete solution must monitor for `fork()` events and automatically apply the parent's policy to its children.
+- *Short-Lived Connections:* For applications that make thousands of very short-lived connections (e.g., a web server benchmark), the overhead of map creation and deletion can become significant. The maps must be designed to handle this "churn" efficiently.
+- *State Cleanup:* The mapping in the eBPF map must be removed when a socket is closed. If it is not, the map will eventually fill up, and new connections cannot be tracked. This requires attaching another eBPF program (e.g., a `kprobe` on `tcp_close`) to reliably detect connection termination and perform the necessary cleanup.
 
 == State of the Art: Analyzing Existing Solutions
 
