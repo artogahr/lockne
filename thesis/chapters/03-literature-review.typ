@@ -1,23 +1,3 @@
-// LITERATURE REVIEW EXPANSION GUIDE
-// Target: 20 pages total (currently ~8 pages)
-// Timeline: Complete by end of Week 4 (Month 1)
-//
-// CURRENT STATUS: Basic structure exists
-// WHAT YOU NEED TO ADD: ~12 more pages in sections marked with TODO
-//
-// WRITING TIPS FOR ADHD:
-// - Write 1-2 pages per day maximum
-// - Start with the section you find most interesting
-// - Use the Pomodoro technique (25 min focused writing)
-// - Don't edit while writing - just get content down first
-//
-// RESEARCH STRATEGY:
-// - Each TODO section includes specific papers/books to read
-// - Spend 30-45 minutes reading, then 60-90 minutes writing
-// - Focus on finding 3-5 key papers per section
-// - Use Google Scholar for academic papers
-// - Check university library for book access
-
 = Literature Review
 
 Before designing and building Lockne, it is essential to understand the technologies that make it possible and the context in which it will operate. This review surveys the technical landscape, focusing on the three pillars of the project: the eBPF framework for kernel programmability, the WireGuard protocol for secure and performant tunneling, and the Rust language for building a reliable control plane. Critically, it also analyzes existing approaches to application-specific traffic control, identifying their limitations. The goal is to establish a clear justification for Lockne's architecture by demonstrating how it addresses a distinct gap left by current solutions.
@@ -301,164 +281,117 @@ This stateful approach is powerful, but it introduces its own set of challenges 
 == State of the Art: Analyzing Existing Solutions
 
 The problem of per-application traffic control is not new. Several solutions exist, each with a different approach and a different set of trade-offs. This analysis of the state of the art is crucial for positioning Lockne and justifying its novel architecture.
+=== Linux Networking Subsystem Analysis: The Native Toolset
 
-// TODO: Expand this section significantly (TARGET: 6-8 pages total)
-// Add these subsections:
+Before justifying the use of a complex technology like eBPF, it is essential to rigorously evaluate the capabilities of the standard Linux networking subsystem. The kernel provides a powerful, albeit complex, set of native tools for routing and filtering traffic, primarily centered around Netfilter, policy routing, and the Traffic Control (TC) subsystem. This section analyzes these tools and demonstrates why, despite their power, they are fundamentally ill-suited for the dynamic, per-application routing that Lockne aims to provide.
 
-// === Academic Research in Application-Aware Networking (TARGET: 2 pages)
-// Cover:
-// 1. Software-Defined Networking (SDN) papers on programmable packet processing
-// 2. Application-aware QoS research
-// 3. Network Function Virtualization (NFV) approaches
-// 4. Service mesh research (Istio, Linkerd architectural papers)
-// Read: SIGCOMM, NSDI, SOSP papers on programmable networking
+==== Netfilter and `iptables`: The Packet Filtering Workhorse
+Netfilter is the primary firewalling framework within the Linux kernel. For decades, the `iptables` userspace utility has been the standard interface for configuring its rules. At first glance, `iptables` seems like a plausible candidate for solving the per-application routing problem, particularly due to its "owner" match module.
 
-// === Enterprise and Commercial Solutions (TARGET: 2 pages)
-// Analyze:
-// 1. Zero-trust network access (ZTNA) solutions: Zscaler, Okta, etc.
-// 2. Split-tunneling in enterprise VPNs (Cisco AnyConnect, Palo Alto GlobalProtect)
-// 3. Application delivery controllers (F5, Citrix)
-// 4. Why these don't solve the desktop user problem
-// Read: Vendor whitepapers, Gartner reports on ZTNA market
+A rule can be constructed using this module to match packets created by a specific user or group:
+`iptables -t mangle -A OUTPUT -m owner --uid-owner arto -j MARK --set-mark 1`
 
-// === Linux Networking Subsystem Analysis (TARGET: 2 pages)
-// Deep dive into:
-// 1. Netfilter/iptables limitations for per-app routing
-// 2. Policy routing and multiple routing tables (ip rule, ip route)
-// 3. Traffic Control (TC) subsystem architecture and limitations
-// 4. Cgroups v1 vs v2 networking capabilities
-// Read: Linux networking documentation, "Understanding Linux Network Internals" book
+This rule tells the kernel to apply a firewall mark of "1" to all outgoing packets from the user `arto`. This mark can then be used by the routing system to direct this traffic differently. However, this approach has two critical limitations:
 
-// CURRENT STATUS: Needs major expansion (currently 1 page, need 6-8 pages total)
-// This is a critical section for your thesis - shows you understand existing work
+1. *Lack of Granularity:* The owner module matches on User ID (UID) or Group ID (GID), not on Process ID (PID). This means it can isolate traffic for an entire user, but it cannot distinguish between two different applications, such as a web browser and a video game, running as the same user. This is the fundamental deal-breaker for per-application control. While there was a PID owner match, it was notoriously unreliable for long-lived connections and has been deprecated.
 
-// TODO: Add these subsections before the existing content:
+2. *Performance and Complexity:* `iptables` processes rules in a sequential list. For a system with many complex rules, the performance overhead of traversing this list for every single packet can become significant. Furthermore, `iptables` rules are not ideal for packet redirection; their primary purpose is to accept, drop, or NAT packets, not to efficiently hand them off to another kernel subsystem like a WireGuard interface.
 
-// WEEK 3 TASK (Monday-Tuesday): Academic Research in Application-Aware Networking
-// TARGET: 2 pages | PRIORITY: HIGH (academic credibility)
-//
-// RESEARCH NEEDED:
-// 1. Search Google Scholar for:
-//    - "Software-Defined Networking" + "application awareness"
-//    - "programmable packet processing"
-//    - "application-aware QoS"
-//    - "service mesh" + "traffic routing"
-// 2. Look for papers in top conferences: SIGCOMM, NSDI, SOSP, OSDI
-// 3. Focus on papers from 2018-2023 (recent work)
-//
-// WHAT TO WRITE ABOUT:
-// 1. Software-Defined Networking (SDN) research:
-//    - OpenFlow-based application routing
-//    - Programmable switches and application identification
-//    - Why SDN solutions don't work for single-host scenarios
-//
-// 2. Network Function Virtualization (NFV):
-//    - Virtual network functions for traffic processing
-//    - Service chaining approaches
-//    - Performance vs flexibility tradeoffs
-//
-// 3. Service mesh research:
-//    - Istio, Linkerd architectural papers
-//    - Sidecar proxy approaches
-//    - Container-centric vs process-centric routing
-//
-// 4. Application-aware QoS:
-//    - Deep packet inspection for app identification
-//    - Machine learning approaches to traffic classification
-//    - Why classification isn't the same as routing control
-//
-// KEY PAPERS TO FIND:
-// - Look for any paper mentioning "per-application" + "traffic control"
-// - Find SDN papers that discuss fine-grained traffic engineering
-// - Search for eBPF papers in networking contexts
+==== Policy Routing: Multiple Routing Tables
+Linux possesses a sophisticated routing subsystem that goes beyond a single default route. It supports multiple, independent routing tables and a ruleset to decide which table to use for any given packet. This is known as "policy routing," configured with the `ip rule` command.
 
-// TODO: Add another subsection
-// WEEK 4 TASK (Monday): Enterprise and Commercial Solutions
-// TARGET: 2 pages | PRIORITY: MEDIUM (market context)
-//
-// RESEARCH NEEDED:
-// 1. Download and test commercial VPN clients:
-//    - Cisco AnyConnect (has split-tunneling)
-//    - NordVPN, ExpressVPN (check their split-tunnel features)
-// 2. Read about Zero Trust Network Access (ZTNA):
-//    - Zscaler Private Access whitepapers
-//    - Okta Advanced Server Access
-//    - Palo Alto Prisma Access
-// 3. Look up Gartner reports on ZTNA market (university library access?)
-//
-// WHAT TO WRITE ABOUT:
-// 1. Enterprise VPN split-tunneling:
-//    - How Cisco AnyConnect handles per-app routing
-//    - Configuration complexity and management overhead
-//    - Why it doesn't work well for desktop users
-//
-// 2. Zero Trust Network Access (ZTNA) solutions:
-//    - Application-centric security models
-//    - Agent-based vs agentless approaches
-//    - Why they focus on enterprise, not consumer use cases
-//
-// 3. Application delivery controllers:
-//    - F5 BIG-IP, Citrix ADC approaches
-//    - Load balancing vs traffic routing differences
-//    - Infrastructure vs host-based solutions
-//
-// 4. Market gap analysis:
-//    - Why commercial solutions don't solve your problem
-//    - Cost, complexity, target market differences
-//    - Desktop user needs vs enterprise requirements
+This system works beautifully with the firewall marks set by `iptables`. Following the previous example, one could create a rule that directs all marked packets to a special routing table:
 
-// TODO: Add another subsection
-// WEEK 4 TASK (Tuesday): Linux Networking Subsystem Analysis
-// TARGET: 2 pages | PRIORITY: HIGH (technical depth)
-//
-// RESEARCH NEEDED:
-// 1. Read "Understanding Linux Network Internals" book (chapters on routing, netfilter)
-// 2. Study Linux kernel documentation:
-//    - Documentation/networking/policy-routing.txt
-//    - Documentation/networking/tc-actions-env-rules.txt
-// 3. Experiment with existing Linux tools:
-//    - iptables owner matching: iptables -m owner --uid-owner
-//    - Policy routing: ip rule add, ip route add table
-//    - TC (Traffic Control): tc qdisc, tc filter
-//
-// WHAT TO WRITE ABOUT:
-// 1. Netfilter/iptables limitations:
-//    - iptables owner module: can match UID/GID, but not specific processes
-//    - Performance implications of complex iptables rules
-//    - Why netfilter hooks aren't optimal for packet redirection
-//
-// 2. Policy routing and multiple routing tables:
-//    - How Linux supports multiple routing tables
-//    - ip rule for policy-based routing
-//    - Limitations: requires manual configuration, not dynamic
-//
-// 3. Traffic Control (TC) subsystem:
-//    - How TC classifiers and actions work
-//    - Why existing TC tools don't provide process-level granularity
-//    - Performance characteristics of TC vs other approaches
-//
-// 4. Control Groups (cgroups) networking:
-//    - cgroups v1 vs v2 networking capabilities
-//    - Network classid and priority controls
-//    - Why cgroups alone aren't sufficient for VPN routing
-//
-// PRACTICAL EXERCISES:
-// - Try: iptables -t mangle -A OUTPUT -m owner --uid-owner $(id -u) -j MARK --set-mark 1
-// - Try: ip rule add fwmark 1 table 100; ip route add default via [vpn-gateway] table 100
-// - Document what works and what doesn't
+1. `ip rule add fwmark 1 table 100` (If packet has mark 1, use table 100)
+2. `ip route add default via [vpn-gateway] table 100` (Table 100's default route is the VPN)
 
-=== Userspace Proxies: The LD_PRELOAD and DLL Injection Method
+This combination is powerful for static, user-based or network-based routing policies. However, its limitations for Lockne are clear:
+- *Static Configuration:* The rules are manually configured and are not designed to be updated dynamically hundreds of times per minute as applications start and stop. The overhead of calling the `ip` command to add and remove rules for every process would be substantial.
+- *Dependency on Firewall Marks:* The entire system still relies on the firewall's ability to mark the packets, which, as we've seen with `iptables`, lacks the required process-level granularity.
 
-The most common approach for desktop applications is seen in tools like Proxifier, proxychains, and tsocks. These solutions work by intercepting network-related system calls within the target application's process space, redirecting them through a proxy connection instead of allowing direct network access.
+==== The Traffic Control (TC) Subsystem
+The TC subsystem itself, where Lockne's eBPF program attaches, has its own native filtering capabilities. Using the `tc filter` command, one can add classifiers that direct traffic to different scheduling classes or perform simple actions.
 
-On Unix-like systems, this interception is typically achieved through the `LD_PRELOAD` mechanism, which allows replacement of shared library functions at runtime. When an application calls network functions like `connect()`, `send()`, or `recv()`, the proxy tool's replacement functions are invoked instead of the system's standard implementations. These replacement functions establish connections through the desired proxy (often SOCKS or HTTP) rather than directly to the target endpoint.
+However, the native TC classifiers suffer from the same fundamental problem as the rest of the traditional toolset: a lack of process context. TC filters can match on IP headers, port numbers, firewall marks, and other packet-level data, but they have no built-in mechanism for identifying the originating process of a given packet. This is precisely the gap that eBPF was designed to fill. By allowing programmable logic at the TC layer, eBPF gives the subsystem the "eyes" it needs to see the process-level context that was previously unavailable.
 
-However, this approach suffers from several fundamental limitations. The performance overhead is significant, as every network operation must traverse multiple abstraction layers. Data packets must cross the kernel-userspace boundary multiple times: first when the application makes the initial system call, then when the proxy tool establishes its own connection to the proxy server, and finally when the proxy server forwards the data to its ultimate destination.
+==== Control Groups (cgroups) Networking
+Control Groups, particularly in their modern `v2` incarnation, provide mechanisms to manage network resources. For example, a network administrator can limit the bandwidth available to a specific cgroup. The `net_cls` controller can even be used to "tag" all traffic originating from a cgroup with a class ID, which can then be used by the TC subsystem.
 
-The brittleness of this approach presents even more serious concerns. Modern applications increasingly use statically linked libraries, which cannot be intercepted through `LD_PRELOAD` mechanisms. Applications with anti-tampering mechanisms may detect and prevent library preloading attempts. Additionally, applications that bypass standard socket APIs by using raw sockets or custom networking libraries may not be affected by these userspace interception techniques.
+This gets us one step closer. We can indeed put a single application into its own cgroup. However, using this mechanism for routing still requires stitching it together with the TC and policy routing systems. It is not a standalone solution. While it provides the process isolation we need, it doesn't provide the dynamic redirection mechanism. eBPF, by contrast, provides both in a single, unified framework. An eBPF program can be attached directly to the cgroup to get process context and perform the redirection itself, without needing to be chained together with two or three other kernel subsystems.
 
-// SECTION STATUS: Complete (1 page) ✓
-// This section covers the basics well
+In summary, while the native Linux networking tools are powerful for static, rule-based network management, they all lack a key ingredient for Lockne's use case: a performant and dynamic way to link a packet on the data path back to its specific originating process. Every native approach is either too coarse (matching on UID instead of PID) or too static (requiring manual configuration of rules). This analysis demonstrates a clear architectural gap that a modern, programmable solution like eBPF is uniquely positioned to fill.
+
+=== Enterprise VPN Split-Tunneling Solutions
+
+Many commercial VPN clients, particularly those targeted at enterprise users, offer a feature called "split tunneling." This allows administrators to configure the VPN to only route certain traffic through the tunnel, while other traffic is allowed to use the direct internet connection. While this may seem similar to Lockne's goal, these solutions are fundamentally different in their scope and their mechanisms.
+
+- *Scope:* Enterprise VPN split tunneling is designed for centrally managed environments. The administrator defines the routing policies, and these policies are pushed down to the client machines. The goal is to allow employees to access internal company resources securely while minimizing the impact on their general internet browsing. This is very different from Lockne's focus on individual users dynamically choosing which applications should use a VPN.
+
+- *Mechanism:* The specific mechanisms vary by vendor, but most enterprise VPNs rely on a combination of:
+  1. *Route Tables:* The VPN client modifies the system's routing table to direct traffic destined for the company's internal networks through the VPN interface.
+  2. *Firewall Rules:* The client configures the local firewall (e.g., Windows Firewall or `iptables` on Linux) to enforce the routing policies. Often, this involves creating rules that match traffic based on the destination IP address or port number.
+  3. *Application-Awareness (Limited):* Some clients offer limited application-awareness, allowing the administrator to specify that all traffic from a specific application executable should be routed through the VPN. However, this is typically implemented using simple process name matching, which is easily bypassed (e.g., by renaming the executable) and does not account for child processes spawned by the application.
+The administrative overhead and lack of dynamic control make these solutions unsuitable for the Lockne's target use case. They are designed for static, centrally managed policies, not for individual users making dynamic, per-application choices.
+
+=== Containerization and Network Namespaces: The "Heavy Hammer" Approach
+
+Containerization technologies, such as Docker and Podman, and related sandboxing tools like Firejail, offer a very different approach to traffic isolation. They create isolated environments with their own network stacks, effectively sandboxing an application and all its network traffic.
+
+- *Mechanism:* These technologies leverage Linux network namespaces, which provide complete isolation of the network environment, including network interfaces, routing tables, and firewall rules. A containerized application operates within its own network namespace, preventing it from directly accessing the host system's network interfaces. All traffic from the container must be explicitly routed through virtual interfaces.
+
+While network namespaces provide strong isolation, they are a heavyweight solution for the problem of per-application routing.
+1. *Resource Overhead:* Creating and managing network namespaces consumes significant system resources, particularly memory. Starting a full container just to isolate a single application's traffic is often overkill.
+2. *Complexity:* Managing network namespaces requires complex configuration, including setting up virtual interfaces, configuring routing rules, and managing firewall policies. This is typically done through command-line tools or container orchestration platforms like Kubernetes, adding significant administrative overhead.
+3. *Limited Integration:* Applications running inside network namespaces are isolated from the host system, making it difficult to share files, display graphical interfaces, or access other host-level services. While there are ways to bridge this gap, they add additional complexity to the system.
+
+For the goals of Lockne, containerization is too heavyweight and too restrictive. The goal is not to completely isolate an application's network traffic but rather to selectively route it through a VPN while still allowing seamless interaction with the host system.
+
+=== Userspace Proxies: The `LD_PRELOAD` Method
+
+The most common approach for per-application traffic control on desktop Linux is seen in tools like `proxychains-ng` and `tsocks`. These solutions operate by intercepting network-related library calls within a target application's process space.
+
+On Unix-like systems, this interception is typically achieved through the `LD_PRELOAD` environment variable. By preloading a custom shared library, these tools can replace standard network functions like `connect()`, `send()`, or `recv()` with their own implementations. When the target application attempts to make a network connection, the proxy tool's replacement function is invoked instead. This function then establishes a connection through the desired proxy (typically SOCKS or HTTP) rather than directly to the target endpoint.
+
+However, this approach suffers from several fundamental limitations:
+- *Performance Overhead:* The performance penalty is significant. Data packets must cross the kernel-userspace boundary multiple times: once for the application's original system call, again when the proxy tool makes its own connection, and so on. This context-switching for every network operation adds considerable latency.
+- *Brittleness:* The `LD_PRELOAD` mechanism is fragile. It is ineffective against modern applications that are statically linked or that use custom networking libraries which bypass the standard C library functions. Furthermore, security-conscious applications may employ anti-tampering mechanisms that detect and prevent library preloading.
+
+=== Full Virtualization: The Heaviest Solution
+
+Another method for achieving complete network isolation is through full virtualization, using a Virtual Machine (VM). By running an application inside a separate guest operating system, its network traffic can be completely managed and routed by the hypervisor.
+
+While providing the strongest possible isolation, this approach introduces excessive overhead for the goal of simple traffic redirection. It requires significant CPU and memory resources to run an entire separate operating system. Furthermore, configuring the virtual networking between the host and guest to achieve the desired routing is complex. The performance penalty of traversing a hypervisor's network stack and the difficulty of integrating a VM-bound application with the host desktop environment make this solution impractical for Lockne's use case.
+
+=== Comparative Analysis of Existing Solutions
+
+The various approaches to per-application traffic control each present a different set of trade-offs between performance, transparency, and administrative complexity. The following table provides a comparative analysis based on several key criteria: Granularity, Performance, Resource Overhead, and Transparency for the application.
+
+#figure(
+  table(
+    columns: (auto, 1fr, 1fr, 1fr, 1fr),
+    stroke: 1pt,
+    align: center + horizon,
+    [*Feature*],
+    [*Userspace Proxies*],
+    [*Split-Tunneling VPNs*],
+    [*Network Namespaces*],
+    [*Lockne*],
+
+    [Granularity],
+    [Per-Process],
+    [Per-App / IP Range],
+    [Per-Container],
+    [Per-Process],
+
+    [Performance], [Low], [Medium], [High], [High],
+    [Resource Overhead], [Very Low], [Low], [High], [Very Low],
+    [Transparency], [Low], [Medium], [High], [High],
+    [Admin Complexity], [Low], [High - Admin], [High - User], [Low],
+  ),
+  caption: [A comparative analysis of traffic control solutions. "Transparency" refers to whether the application needs to be modified or aware of the mechanism.],
+)
+
+This analysis highlights the specific gap that Lockne is designed to fill. Traditional userspace proxies sacrifice performance and transparency for granularity. Enterprise solutions and containerization, while performant, introduce significant resource and administrative overhead and lack the dynamic, user-centric control needed for desktop use cases. Lockne's architecture aims to provide the high granularity of userspace proxies with the high performance and transparency of in-kernel solutions, all while maintaining low resource usage and low complexity for the end-user.
 
 === Network Namespaces: The Heavyweight Solution
 
@@ -468,124 +401,19 @@ While network namespaces offer complete and reliable traffic control, they are f
 
 Applications running in separate namespaces cannot easily communicate with services in the root namespace, breaking integration with desktop environments and shared services. The isolation provided by network namespaces is often excessive for simple application routing needs, creating hard boundaries that prevent the kind of selective, transparent routing that desktop users expect.
 
-// SECTION STATUS: Complete (1 page) ✓
-// This section covers the basics well
-
 === System-Wide VPN Solutions: Lack of Granularity
 
 Traditional VPN clients route all system traffic through encrypted tunnels without application-level discrimination. While these solutions excel in providing comprehensive traffic protection, their all-or-nothing approach creates significant usability challenges.
 
 All applications, including those that may require local network access or have incompatibility issues with tunneled connections, are forced through the VPN tunnel. This can break local file sharing, network printing, or applications that require direct connectivity. The performance impact is also substantial for users who only need protection for specific applications, as all traffic consumes VPN server resources and may be subject to geographic latency penalties.
 
-// TODO: Add completely new sections after the existing analysis:
 
-// === Container and Virtualization Approaches (TARGET: 1-2 pages)
-// Analyze:
-// 1. Docker/Podman networking for app isolation
-// 2. systemd-nspawn containers
-// 3. Firejail sandboxing approach
-// 4. Why full virtualization (VMs) is overkill
-// Read: Container networking papers, Docker/Kubernetes networking docs
+The all-or-nothing approach of system-wide VPNs has several drawbacks:
+- *Performance:* All network traffic is routed through the VPN server, even traffic destined for local network resources. This introduces unnecessary latency and consumes VPN server bandwidth.
+- *Compatibility:* Some applications may not function correctly through a VPN tunnel. This can be due to protocol incompatibilities, MTU (Maximum Transmission Unit) issues, or other VPN-related problems.
+- *Usability:* Users may want to selectively route traffic through a VPN only for specific tasks, such as browsing sensitive websites, while still using their direct internet connection for other activities.
 
-// === Cross-Platform Considerations (TARGET: 1 page)
-// Discuss:
-// 1. Why this is fundamentally Linux-specific (eBPF)
-// 2. Windows alternatives: WinDivert, Winsock LSP, WFP (Windows Filtering Platform)
-// 3. macOS Network Extensions framework
-// 4. Why cross-platform solutions compromise on performance/features
-// Read: Platform-specific networking documentation
-
-// === Emerging Technologies and Future Directions (TARGET: 1 page)
-// Cover:
-// 1. QUIC protocol implications for traffic routing
-// 2. eBPF evolution: upcoming kernel features
-// 3. Hardware acceleration trends (XDP, smart NICs)
-// 4. Cloud-native networking evolution
-// Read: Recent IETF RFCs, kernel development mailing lists
-
-// TODO: Add completely new sections after the existing analysis:
-
-// WEEK 4 TASK (Wednesday): Container and Virtualization Approaches
-// TARGET: 1-2 pages | PRIORITY: MEDIUM
-//
-// RESEARCH NEEDED:
-// 1. Try Docker/Podman networking for app isolation:
-//    - docker run --network=none --name isolated-app firefox
-//    - Study how container networking works
-// 2. Look up systemd-nspawn documentation and examples
-// 3. Research Firejail sandboxing (security-focused approach)
-//
-// WHAT TO WRITE ABOUT:
-// 1. Docker/Podman networking approaches:
-//    - How containers solve traffic isolation
-//    - Performance overhead of container networking
-//    - User experience issues (X11, audio, file access)
-//
-// 2. Lightweight containerization:
-//    - systemd-nspawn as alternative to full containers
-//    - Firejail's approach to sandboxing with network control
-//    - Why these are still too heavyweight for casual use
-//
-// 3. Virtual machines:
-//    - Ultimate isolation but extreme resource overhead
-//    - Use cases where VMs make sense vs overkill
-//
-// 4. Analysis of why containerization doesn't solve your problem:
-//    - Resource overhead, complexity, user experience issues
-//    - Desktop integration challenges
-
-// WEEK 4 TASK (Thursday): Cross-Platform Considerations
-// TARGET: 1 page | PRIORITY: LOW (but good for completeness)
-//
-// RESEARCH NEEDED:
-// 1. Read about Windows networking APIs:
-//    - WinDivert library documentation
-//    - Winsock Layered Service Providers (LSP)
-//    - Windows Filtering Platform (WFP)
-// 2. Look up macOS Network Extensions framework
-// 3. Find papers comparing cross-platform networking approaches
-//
-// WHAT TO WRITE ABOUT:
-// 1. Why Lockne is fundamentally Linux-specific:
-//    - eBPF is Linux-only technology
-//    - Kernel-level packet filtering varies by OS
-//
-// 2. Windows alternatives and their limitations:
-//    - WinDivert: userspace packet capture (performance penalty)
-//    - LSP: deprecated, security issues
-//    - WFP: complex, requires driver development
-//
-// 3. macOS Network Extensions:
-//    - App-centric filtering capabilities
-//    - Sandbox restrictions and user experience
-//
-// 4. Why cross-platform solutions compromise:
-//    - Lowest common denominator approaches
-//    - Performance vs portability tradeoffs
-
-// WEEK 4 TASK (Friday): Emerging Technologies and Future Directions
-// TARGET: 1 page | PRIORITY: LOW (shows you're thinking ahead)
-//
-// RESEARCH NEEDED:
-// 1. Read about QUIC protocol and its implications
-// 2. Follow Linux kernel mailing list for upcoming eBPF features
-// 3. Look up hardware acceleration trends (XDP, smart NICs)
-//
-// WHAT TO WRITE ABOUT:
-// 1. Protocol evolution impact:
-//    - QUIC's connection migration affects process tracking
-//    - HTTP/3 over QUIC implications for traffic classification
-//
-// 2. eBPF evolution:
-//    - Upcoming kernel features that could benefit Lockne
-//    - Better process tracking primitives in development
-//
-// 3. Hardware acceleration trends:
-//    - XDP and smart NIC capabilities
-//    - How hardware offload might change the landscape
-//
-// 4. Cloud-native networking evolution:
-//    - How container networking trends might influence desktop solutions
+System-wide VPNs can be a blunt instrument, forcing all traffic through the tunnel even when it is not necessary or desirable. This lack of granularity makes them unsuitable for users who need fine-grained control over their network traffic.
 
 == Synthesis: Identifying the Architectural Gap
 
