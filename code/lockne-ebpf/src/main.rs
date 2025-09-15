@@ -5,6 +5,7 @@ use aya_ebpf::{
     bindings::TC_ACT_PIPE,
     macros::classifier,
     programs::TcContext,
+    helpers::bpf_get_socket_cookie,
 };
 use aya_log_ebpf::info;
 use core::mem;
@@ -63,10 +64,14 @@ fn try_lockne(ctx: TcContext) -> Result<i32, i32> {
     let dest_c = (dest >> 8) & 0xFF;
     let dest_d = dest & 0xFF;
 
-    info!(&ctx, "{} {}.{}.{}.{} {}.{}.{}.{}", 
+    // Try to get the socket cookie for this packet
+    let socket_cookie = unsafe { bpf_get_socket_cookie(ctx.skb.skb as *mut _) };
+
+    info!(&ctx, "{} {}.{}.{}.{} {}.{}.{}.{} cookie={}", 
         ctx.len(), 
         source_a, source_b, source_c, source_d,
-        dest_a, dest_b, dest_c, dest_d
+        dest_a, dest_b, dest_c, dest_d,
+        socket_cookie
     );
 
     Ok(TC_ACT_PIPE)
