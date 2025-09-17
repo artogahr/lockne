@@ -3,12 +3,20 @@
 
 use aya_ebpf::{
     bindings::TC_ACT_PIPE,
-    macros::classifier,
+    macros::{classifier, map},
+    maps::HashMap,
     programs::TcContext,
     helpers::bpf_get_socket_cookie,
 };
 use aya_log_ebpf::info;
 use core::mem;
+use lockne_common::Pid;
+
+// Map to store socket cookie -> PID mappings
+// This will be populated by a cgroup/sock_addr program (to be implemented)
+// and read by this TC classifier program
+#[map]
+static SOCKET_PID_MAP: HashMap<u64, Pid> = HashMap::with_max_entries(10240, 0);
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -67,12 +75,29 @@ fn try_lockne(ctx: TcContext) -> Result<i32, i32> {
     // Try to get the socket cookie for this packet
     let socket_cookie = unsafe { bpf_get_socket_cookie(ctx.skb.skb as *mut _) };
 
-    info!(&ctx, "{} {}.{}.{}.{} {}.{}.{}.{} cookie={}", 
-        ctx.len(), 
-        source_a, source_b, source_c, source_d,
-        dest_a, dest_b, dest_c, dest_d,
-        socket_cookie
-    );
+    // Look up the PID associated with this socket cookie
+    let pid = unsafe { SOCKET_PID_MAP.get(&socket_cookie) };
+
+    match pid {
+        Some(pid_value) => {
+            info!(&ctx, "{} {}.{}.{}.{} {}.{}.{}.{} cookie={} pid={}", 
+                ctx.len(), 
+                source_a, source_b, source_c, source_d,
+                dest_a, dest_b, dest_c, dest_d,
+                socket_cookie,
+                *pid_value
+            );
+        }
+        None => {
+            // No PID mapping found for this socket cookie
+            info!(&ctx, "{} {}.{}.{}.{} {}.{}.{}.{} cookie={} pid=unknown", 
+                ctx.len(), 
+                source_a, source_b, source_c, source_d,
+                dest_a, dest_b, dest_c, dest_d,
+                socket_cookie
+            );
+        }
+    }
 
     Ok(TC_ACT_PIPE)
 }
