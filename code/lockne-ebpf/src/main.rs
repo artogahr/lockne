@@ -3,10 +3,10 @@
 
 use aya_ebpf::{
     bindings::TC_ACT_PIPE,
-    macros::{classifier, map},
+    macros::{classifier, cgroup_sock_addr, map},
     maps::HashMap,
-    programs::TcContext,
-    helpers::bpf_get_socket_cookie,
+    programs::{TcContext, SockAddrContext},
+    helpers::{bpf_get_socket_cookie, bpf_get_current_pid_tgid},
 };
 use aya_log_ebpf::info;
 use core::mem;
@@ -100,6 +100,42 @@ fn try_lockne(ctx: TcContext) -> Result<i32, i32> {
     }
 
     Ok(TC_ACT_PIPE)
+}
+
+// This program is attached to a cgroup and is called whenever a process
+// in that cgroup performs a socket operation (like connect or sendmsg).
+// We use this to capture the mapping between a socket and the process that owns it.
+#[cgroup_sock_addr(connect4)]
+pub fn lockne_connect4(ctx: SockAddrContext) -> i32 {
+    match unsafe { try_lockne_connect4(ctx) } {
+        Ok(ret) => ret,
+        Err(_) => 1,
+    }
+}
+
+unsafe fn try_lockne_connect4(ctx: SockAddrContext) -> Result<i32, i64> {
+    // SAFETY: These eBPF helper calls are safe within the context of an eBPF program
+    // Get the socket cookie - a unique, stable identifier for this socket
+    let sock_cookie = unsafe { bpf_get_socket_cookie(ctx.sock_addr as *mut _) };
+    
+    // Get the PID of the process making this connection
+    // bpf_get_current_pid_tgid returns both PID and TGID in a u64
+    // The upper 32 bits are the TGID (thread group ID, which is the actual process ID)
+    // The lower 32 bits are the PID (thread ID)
+    let pid_tgid = unsafe { bpf_get_current_pid_tgid() };
+    let pid = (pid_tgid >> 32) as u32;
+    
+    // Store the mapping in our hash map
+    // SAFETY: Map operations are safe in eBPF context
+    unsafe {
+        SOCKET_PID_MAP.insert(&sock_cookie, &pid, 0)
+            .map_err(|e| e as i64)?;
+    }
+    
+    info!(&ctx, "Tracked socket cookie={} for pid={}", sock_cookie, pid);
+    
+    // Return 1 to allow the connection to proceed
+    Ok(1)
 }
 
 #[cfg(not(test))]
