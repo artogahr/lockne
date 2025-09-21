@@ -1,8 +1,9 @@
-use aya::programs::{SchedClassifier, TcAttachType, tc};
+use aya::programs::{SchedClassifier, TcAttachType, tc, CgroupSockAddr, CgroupAttachMode};
 use clap::Parser;
 #[rustfmt::skip]
-use log::{debug, warn};
+use log::{debug, warn, info};
 use tokio::signal;
+use std::fs;
 
 #[derive(Debug, Parser)]
 struct Opt {
@@ -73,6 +74,19 @@ async fn main() -> anyhow::Result<()> {
     let program: &mut SchedClassifier = ebpf.program_mut("lockne").unwrap().try_into()?;
     program.load()?;
     program.attach(&iface, TcAttachType::Egress)?;
+
+    // Attach the cgroup socket tracking program to the root cgroup
+    // This will track all socket connections on the system
+    let cgroup_program: &mut CgroupSockAddr = ebpf.program_mut("lockne_connect4").unwrap().try_into()?;
+    cgroup_program.load()?;
+    
+    // Attach to the root cgroup (v2) to track all processes
+    let cgroup_path = "/sys/fs/cgroup";
+    let cgroup_file = fs::File::open(cgroup_path)?;
+    cgroup_program.attach(cgroup_file, CgroupAttachMode::Single)?;
+    
+    info!("Attached TC egress program to interface {}", iface);
+    info!("Attached cgroup socket tracking to {}", cgroup_path);
 
     if limit.is_some() {
         println!("Logging packets with limit, will exit automatically...");
