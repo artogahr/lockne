@@ -21,7 +21,7 @@
       let
         pkgs = import nixpkgs { inherit system; };
 
-        rust-toolchain = fenix.packages.${system}.complete.toolchain;
+        rust-toolchain = fenix.packages.${system}.fromToolchainFile { dir = ./code; };
 
       in
       {
