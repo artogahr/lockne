@@ -21,7 +21,10 @@
       let
         pkgs = import nixpkgs { inherit system; };
 
-        rust-toolchain = fenix.packages.${system}.fromToolchainFile { dir = ./code; };
+        rust-toolchain = fenix.packages.${system}.fromToolchainFile {
+          dir = ./code;
+          sha256 = "sha256-v+i2vvBAKg14CNWODfuTQ5ikMo43vEOznqXy6vAb8WA=";
+        };
 
       in
       {
