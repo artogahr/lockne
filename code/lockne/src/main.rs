@@ -8,6 +8,8 @@ use tokio::signal;
 struct Opt {
     #[clap(short, long, default_value = "eno1")]
     iface: String,
+    #[clap(short, long, help = "Limit number of packets to log (0 = unlimited)")]
+    limit: Option<u32>,
 }
 
 #[tokio::main]
@@ -35,6 +37,8 @@ async fn main() -> anyhow::Result<()> {
         env!("OUT_DIR"),
         "/lockne"
     )))?;
+    let limit = opt.limit;
+
     match aya_log::EbpfLogger::init(&mut ebpf) {
         Err(e) => {
             // This can happen if you remove all log statements from your eBPF program.
@@ -44,15 +48,25 @@ async fn main() -> anyhow::Result<()> {
             let mut logger =
                 tokio::io::unix::AsyncFd::with_interest(logger, tokio::io::Interest::READABLE)?;
             tokio::task::spawn(async move {
+                let mut count = 0u32;
                 loop {
                     let mut guard = logger.readable_mut().await.unwrap();
                     guard.get_inner_mut().flush();
                     guard.clear_ready();
+                    
+                    // Count log messages and exit if limit reached
+                    if let Some(limit) = limit {
+                        count += 1;
+                        if count >= limit {
+                            println!("Reached packet limit of {}, exiting...", limit);
+                            std::process::exit(0);
+                        }
+                    }
                 }
             });
         }
     }
-    let Opt { iface } = opt;
+    let Opt { iface, limit } = opt;
     // error adding clsact to the interface if it is already added is harmless
     // the full cleanup can be done with 'sudo tc qdisc del dev eth0 clsact'.
     let _ = tc::qdisc_add_clsact(&iface);
@@ -60,8 +74,13 @@ async fn main() -> anyhow::Result<()> {
     program.load()?;
     program.attach(&iface, TcAttachType::Egress)?;
 
+    if limit.is_some() {
+        println!("Logging packets with limit, will exit automatically...");
+    } else {
+        println!("Waiting for Ctrl-C...");
+    }
+    
     let ctrl_c = signal::ctrl_c();
-    println!("Waiting for Ctrl-C...");
     ctrl_c.await?;
     println!("Exiting...");
 
