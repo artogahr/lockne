@@ -1,7 +1,11 @@
 #![no_std]
 #![no_main]
 
-use aya_ebpf::{bindings::TC_ACT_PIPE, macros::classifier, programs::TcContext};
+use aya_ebpf::{
+    bindings::TC_ACT_PIPE,
+    macros::classifier,
+    programs::TcContext,
+};
 use aya_log_ebpf::info;
 
 #[classifier]
@@ -13,7 +17,8 @@ pub fn lockne(ctx: TcContext) -> i32 {
 }
 
 fn try_lockne(ctx: TcContext) -> Result<i32, i32> {
-    info!(&ctx, "received a packet");
+    let len = ctx.len();
+    info!(&ctx, "Packet received: len={}", len);
     Ok(TC_ACT_PIPE)
 }
 
