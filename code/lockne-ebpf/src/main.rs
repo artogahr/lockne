@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![allow(unsafe_op_in_unsafe_fn)]
 
 use aya_ebpf::{
     bindings::TC_ACT_PIPE,
@@ -114,23 +115,19 @@ pub fn lockne_connect4(ctx: SockAddrContext) -> i32 {
 }
 
 unsafe fn try_lockne_connect4(ctx: SockAddrContext) -> Result<i32, i64> {
-    // SAFETY: These eBPF helper calls are safe within the context of an eBPF program
     // Get the socket cookie - a unique, stable identifier for this socket
-    let sock_cookie = unsafe { bpf_get_socket_cookie(ctx.sock_addr as *mut _) };
+    let sock_cookie = bpf_get_socket_cookie(ctx.sock_addr as *mut _);
     
     // Get the PID of the process making this connection
     // bpf_get_current_pid_tgid returns both PID and TGID in a u64
     // The upper 32 bits are the TGID (thread group ID, which is the actual process ID)
     // The lower 32 bits are the PID (thread ID)
-    let pid_tgid = unsafe { bpf_get_current_pid_tgid() };
+    let pid_tgid = bpf_get_current_pid_tgid();
     let pid = (pid_tgid >> 32) as u32;
     
     // Store the mapping in our hash map
-    // SAFETY: Map operations are safe in eBPF context
-    unsafe {
-        SOCKET_PID_MAP.insert(&sock_cookie, &pid, 0)
-            .map_err(|e| e as i64)?;
-    }
+    SOCKET_PID_MAP.insert(&sock_cookie, &pid, 0)
+        .map_err(|e| e as i64)?;
     
     info!(&ctx, "Tracked socket cookie={} for pid={}", sock_cookie, pid);
     
