@@ -74,3 +74,46 @@ To test the implementation, the program was run while making HTTP requests with 
 First, the cgroup program captures the socket creation and logs the PID. Then, as packets flow through the TC egress hook, they're correctly associated with that same PID.
 
 This proves that the core mechanism works - we can now identify which process is sending each packet.
+
+== Challenges and Lessons Learned
+
+Building this system involved several technical challenges that required careful debugging and understanding of eBPF internals.
+
+=== Socket Cookie Retrieval in Different Contexts
+
+One early issue was understanding how to correctly retrieve socket cookies in different eBPF program contexts. The `bpf_get_socket_cookie()` helper function works differently depending on where it's called. In the cgroup context, we pass `ctx.sock_addr` as the argument, while in the TC context, we use `ctx.skb.skb`. Getting this right required reading through eBPF helper function documentation and looking at example code.
+
+=== Testing eBPF Programs
+
+Testing eBPF programs is harder than regular userspace code. You can't just run unit tests. The programs need to be loaded into the kernel, and you need to generate actual network traffic to see if they work. Early on, I tried using `ping` for testing, but ping uses ICMP which doesn't go through the `connect()` system call, so the cgroup program wasn't triggered. Using `curl` for HTTP requests worked better because it creates actual TCP connections.
+
+=== Handling Background Processes  
+
+During testing, I had to be careful about cleanup. If the program crashes or gets killed improperly, the eBPF programs stay attached to the cgroup and network interface, and the TC qdisc remains configured. This can cause issues when trying to run the program again. I learned to always clean up with `sudo pkill lockne` and `sudo tc qdisc del dev eno1 clsact` before restarting.
+
+== Current Limitations and Future Work
+
+While the current implementation successfully demonstrates process-to-packet mapping, there are several areas that need further development:
+
+=== IPv6 Support
+
+Right now, only IPv4 connections are tracked. The cgroup program only attaches to `connect4` hooks. To support IPv6, we'd need to add a similar program for `connect6` and update the TC classifier to handle IPv6 packets as well. This is straightforward but wasn't prioritized for the initial proof of concept.
+
+=== Map Cleanup
+
+Currently, entries are added to the socket-to-PID map when connections are established, but they're never removed. This means the map will eventually fill up and stop accepting new entries. A complete implementation needs to track socket close events (probably with a kprobe on `tcp_close` or similar) and remove the corresponding entries.
+
+=== Process Hierarchy Tracking  
+
+If a tracked process spawns child processes, those children get their own PIDs and won't be automatically tracked. For example, if we're tracking Firefox and it spawns a helper process for video decoding, that helper's traffic won't be associated with the parent. Solving this requires tracking fork/clone events and inheriting the parent's policy.
+
+=== Actual Packet Redirection
+
+The most important missing piece is that we're not actually redirecting packets yet - we're just logging which process they came from. The next major step is to use the `bpf_redirect()` helper to actually send packets to a WireGuard interface based on the process that created them. This requires:
+
+1. A policy map to decide which PIDs should be redirected
+2. Logic to look up the WireGuard interface index  
+3. Actually calling `bpf_redirect()` instead of returning `TC_ACT_PIPE`
+4. A userspace control interface to configure policies
+
+Despite these limitations, the current implementation proves the fundamental concept works. We can reliably map packets to processes using socket cookies and eBPF, which is the hardest part of building Lockne.
