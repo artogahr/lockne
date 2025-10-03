@@ -47,7 +47,11 @@ The second program is the TC classifier we started with. For each outgoing packe
 3. If found, it logs the packet with its associated PID
 4. If not found, it logs "pid=unknown"
 
-The "unknown" cases are expected - they happen for packets from connections that were established before our program started, or for kernel-generated traffic that doesn't come from a userspace process.
+The "unknown" cases are expected and happen in two scenarios:
+1. Packets from connections established before lockne started (the mapping doesn't exist yet)
+2. Kernel-generated traffic that doesn't come from a userspace process
+
+This is an important limitation - the cgroup program only captures socket creation events that occur while it's running. Pre-existing connections won't be tracked. This means lockne needs to be started before the applications you want to monitor, or you need to restart those applications after lockne is running.
 
 === Shared State via eBPF Maps
 
