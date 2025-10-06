@@ -1,101 +1,40 @@
-use aya::programs::{SchedClassifier, TcAttachType, tc, CgroupSockAddr, CgroupAttachMode};
-use clap::Parser;
-#[rustfmt::skip]
-use log::{debug, warn, info};
-use tokio::signal;
-use std::fs;
+//! Lockne - Dynamic Per-Application VPN Tunneling with eBPF
+//!
+//! This is the main entry point for the Lockne daemon.
+//! See the library documentation for more details on the architecture.
 
-#[derive(Debug, Parser)]
-struct Opt {
-    #[clap(short, long, default_value = "eno1")]
-    iface: String,
-    #[clap(short, long, help = "Limit number of packets to log (0 = unlimited)")]
-    limit: Option<u32>,
-}
+use lockne::{Config, LockneLoader};
+use tokio::signal;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let opt = Opt::parse();
-
+    // Initialize logging
     env_logger::init();
 
-    // Bump the memlock rlimit. This is needed for older kernels that don't use the
-    // new memcg based accounting, see https://lwn.net/Articles/837122/
-    let rlim = libc::rlimit {
-        rlim_cur: libc::RLIM_INFINITY,
-        rlim_max: libc::RLIM_INFINITY,
-    };
-    let ret = unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &rlim) };
-    if ret != 0 {
-        debug!("remove limit on locked memory failed, ret is: {ret}");
-    }
+    // Parse command-line configuration
+    let config = Config::from_args();
 
-    // This will include your eBPF object file as raw bytes at compile-time and load it at
-    // runtime. This approach is recommended for most real-world use cases. If you would
-    // like to specify the eBPF program at runtime rather than at compile-time, you can
-    // reach for `Bpf::load_file` instead.
-    let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
-        env!("OUT_DIR"),
-        "/lockne"
-    )))?;
-    let limit = opt.limit;
+    // Load the eBPF programs
+    let mut loader = LockneLoader::new()?;
 
-    match aya_log::EbpfLogger::init(&mut ebpf) {
-        Err(e) => {
-            // This can happen if you remove all log statements from your eBPF program.
-            warn!("failed to initialize eBPF logger: {e}");
-        }
-        Ok(logger) => {
-            let mut logger =
-                tokio::io::unix::AsyncFd::with_interest(logger, tokio::io::Interest::READABLE)?;
-            tokio::task::spawn(async move {
-                let mut count = 0u32;
-                loop {
-                    let mut guard = logger.readable_mut().await.unwrap();
-                    guard.get_inner_mut().flush();
-                    guard.clear_ready();
-                    
-                    // Count log messages and exit if limit reached
-                    if let Some(limit) = limit {
-                        count += 1;
-                        if count >= limit {
-                            println!("Reached packet limit of {}, exiting...", limit);
-                            std::process::exit(0);
-                        }
-                    }
-                }
-            });
-        }
-    }
-    let Opt { iface, limit } = opt;
-    // error adding clsact to the interface if it is already added is harmless
-    // the full cleanup can be done with 'sudo tc qdisc del dev eth0 clsact'.
-    let _ = tc::qdisc_add_clsact(&iface);
-    let program: &mut SchedClassifier = ebpf.program_mut("lockne").unwrap().try_into()?;
-    program.load()?;
-    program.attach(&iface, TcAttachType::Egress)?;
+    // Setup eBPF logging
+    lockne::logger::setup_ebpf_logger(loader.ebpf_mut(), config.limit)?;
 
-    // Attach the cgroup socket tracking program to the root cgroup
-    // This will track all socket connections on the system
-    let cgroup_program: &mut CgroupSockAddr = ebpf.program_mut("lockne_connect4").unwrap().try_into()?;
-    cgroup_program.load()?;
-    
-    // Attach to the root cgroup (v2) to track all processes
-    let cgroup_path = "/sys/fs/cgroup";
-    let cgroup_file = fs::File::open(cgroup_path)?;
-    cgroup_program.attach(cgroup_file, CgroupAttachMode::Single)?;
-    
-    info!("Attached TC egress program to interface {}", iface);
-    info!("Attached cgroup socket tracking to {}", cgroup_path);
+    // Attach the TC egress classifier to the network interface
+    loader.attach_tc_program(&config.iface)?;
 
-    if limit.is_some() {
+    // Attach the cgroup socket tracker
+    loader.attach_cgroup_program(&config.cgroup_path)?;
+
+    // Print status message
+    if config.limit.is_some() {
         println!("Logging packets with limit, will exit automatically...");
     } else {
         println!("Waiting for Ctrl-C...");
     }
-    
-    let ctrl_c = signal::ctrl_c();
-    ctrl_c.await?;
+
+    // Wait for Ctrl-C
+    signal::ctrl_c().await?;
     println!("Exiting...");
 
     Ok(())

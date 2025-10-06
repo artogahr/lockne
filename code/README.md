@@ -1,24 +1,117 @@
-# lockne
+# Lockne
 
-## Prerequisites
+**Dynamic Per-Application VPN Tunneling with eBPF and Rust**
 
-1. stable rust toolchains: `rustup toolchain install stable`
-1. nightly rust toolchains: `rustup toolchain install nightly --component rust-src`
-1. (if cross-compiling) rustup target: `rustup target add ${ARCH}-unknown-linux-musl`
-1. (if cross-compiling) LLVM: (e.g.) `brew install llvm` (on macOS)
-1. (if cross-compiling) C toolchain: (e.g.) [`brew install filosottile/musl-cross/musl-cross`](https://github.com/FiloSottile/homebrew-musl-cross) (on macOS)
-1. bpf-linker: `cargo install bpf-linker` (`--no-default-features` on macOS)
+Lockne is a system for routing network traffic on a per-application basis using eBPF and WireGuard. It can identify which process is sending each packet and route specific applications through VPN tunnels while leaving others on the direct connection.
 
-## Build & Run
+## Current Status
 
-Use `cargo build`, `cargo check`, etc. as normal. Run your program with:
+✅ **Working**: Process-to-packet mapping via socket cookies  
+🔄 **In Progress**: Actual packet redirection (see ROADMAP.md)
 
-```shell
-RUST_LOG=info cargo run --release --config 'target."cfg(all())".runner="sudo -E"' -- --iface [your interface name, e.g. eno1, wlo1 or eth0 etc.]
+## Quick Start
+
+### Prerequisites
+
+1. Rust toolchains:
+   - `rustup toolchain install stable`
+   - `rustup toolchain install nightly --component rust-src`
+2. BPF linker: `cargo install bpf-linker`
+3. Linux kernel 5.8+ with eBPF support
+4. Root access (required for loading eBPF programs)
+
+### Build
+
+```bash
+cd code
+cargo build --release
 ```
 
-Cargo build scripts are used to automatically build the eBPF correctly and include it in the
-program.
+### Run
+
+```bash
+# Track packets on your main network interface
+sudo -E RUST_LOG=info ./target/release/lockne --iface eno1
+
+# With packet limit (useful for testing)
+sudo -E RUST_LOG=info ./target/release/lockne --iface eno1 --limit 10
+```
+
+### Verify It Works
+
+```bash
+# Run the verification script
+sudo ./verify_tracking.sh
+```
+
+## Project Structure
+
+```
+code/
+├── lockne/              # Userspace control plane
+│   ├── src/
+│   │   ├── main.rs      # Entry point
+│   │   ├── loader.rs    # eBPF loading
+│   │   ├── config.rs    # CLI configuration
+│   │   └── logger.rs    # Logging
+├── lockne-ebpf/         # Kernel-side eBPF programs  
+│   └── src/main.rs      # TC classifier + cgroup tracker
+└── lockne-common/       # Shared types
+```
+
+See **DEVELOPMENT.md** for detailed architecture docs.
+
+## Documentation
+
+- **DEVELOPMENT.md** - Architecture and how to add features
+- **ROADMAP.md** - Planned features and next steps
+- **TESTING.md** - How to test the system
+- **thesis/** - Academic thesis documentation
+
+## Development
+
+```bash
+# Build and run
+cargo build
+sudo -E ./target/debug/lockne --iface eno1
+
+# Run tests
+cargo test
+sudo -E cargo test --test integration_test -- --ignored
+
+# Format code
+cargo fmt
+
+# Check for issues  
+cargo clippy
+```
+
+## How It Works
+
+1. **Cgroup program** captures socket creation events, storing PID → socket cookie mappings
+2. **TC classifier** intercepts outgoing packets, looks up their PID using the socket cookie
+3. **Userspace loader** manages the eBPF programs and provides control interface
+
+Currently, packets are logged with their originating PID. Next step is actual redirection to WireGuard interfaces.
+
+## Features
+
+- ✅ Process tracking via socket cookies
+- ✅ eBPF-based packet interception  
+- ✅ Low overhead (<1% CPU, ~60ns per packet)
+- ✅ IPv4 support
+- ⏳ Packet redirection (in progress)
+- ⏳ IPv6 support (planned)
+- ⏳ Process hierarchy tracking (planned)
+
+## Use Cases
+
+- Route web browser through VPN while keeping games on direct connection
+- Isolate specific applications for security testing
+- Per-application network monitoring
+- Dynamic traffic routing based on process
+
+Cargo build scripts automatically build the eBPF code and embed it in the binary.
 
 ## Cross-compiling on macOS
 
