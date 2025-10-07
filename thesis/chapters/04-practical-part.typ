@@ -200,6 +200,22 @@ The "unknown" cases are expected and happen in two scenarios:
 
 This is an important limitation - the cgroup program only captures socket creation events that occur while it's running. Pre-existing connections won't be tracked. This means lockne needs to be started before the applications you want to monitor, or you need to restart those applications after lockne is running.
 
+==== Can We Track Existing Connections?
+
+This limitation raises an obvious question: is it possible to backfill the map with information about sockets that already exist?
+
+The short answer is: it's very difficult. Several approaches were investigated:
+
+*Scanning /proc:* The `/proc/net/tcp` file lists all TCP connections with their socket inodes, and `/proc/[pid]/fd/` shows which process owns each file descriptor. However, socket cookies are kernel-internal identifiers not exposed through `/proc`. There's no way to map from an inode to a socket cookie from userspace.
+
+*NETLINK_SOCK_DIAG:* The kernel's netlink interface can enumerate existing sockets and their owning processes. However, like `/proc`, it doesn't expose socket cookies. We can see that PID 1234 has a connection, but we can't link that to the packets we intercept in the TC hook.
+
+*eBPF Iterators:* Since kernel 5.8, eBPF supports "iterator" programs that can walk kernel data structures. An iterator could potentially traverse all existing sockets, extract their cookies, and populate our map. This is theoretically possible but adds significant complexity - the iterator needs to handle socket locking correctly, deal with sockets in various states, and coordinate with the TC and cgroup programs. For a proof-of-concept implementation, this complexity isn't justified.
+
+*Accepting the Limitation:* The most practical approach is to document the limitation and provide workarounds. Users can start lockne early in the boot process, or restart applications after launching lockne. This is the same pattern used by many eBPF-based monitoring tools - they observe events from their start time forward, not retroactively.
+
+For the purposes of this thesis, the limitation is acceptable. It doesn't prevent demonstrating that the core concept works - we can reliably track processes for new connections. A production implementation might investigate eBPF iterators, but that's future work beyond the scope of this project.
+
 === Shared State via eBPF Maps
 
 The bridge between these two programs is an eBPF hash map:
