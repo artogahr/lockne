@@ -676,3 +676,47 @@ The most important missing piece is that we're not actually redirecting packets 
 4. A userspace control interface to configure policies
 
 Despite these limitations, the current implementation proves the fundamental concept works. We can reliably map packets to processes using socket cookies and eBPF, which is the hardest part of building Lockne.
+
+== User Interface and Usability
+
+While the core functionality operates at the kernel level, how users interact with the system matters. The initial implementation used simple console logging - packets were printed to the terminal as they were intercepted. This works for debugging but isn't ideal for monitoring a running system.
+
+=== Terminal User Interface with Ratatui
+
+To improve usability, a terminal user interface (TUI) was added using the Ratatui library. Ratatui is a Rust framework for building text-based UIs that run in the terminal. It provides widgets like boxes, lists, and progress bars, making it possible to create dashboard-like interfaces without needing a graphical environment.
+
+The TUI mode can be enabled with the `--tui` flag:
+```bash
+sudo ./lockne --iface eno1 --tui
+```
+
+The interface displays:
+- *Live packet counter*: Total packets intercepted
+- *Connection tracking*: Number of socket connections captured  
+- *Unique PIDs*: How many different processes are being tracked
+- *Scrolling log view*: Recent activity showing which PIDs are active
+
+This provides at-a-glance visibility into system activity. Users can quickly see if their target applications are being tracked and how much traffic they're generating. Pressing 'q' exits the program gracefully.
+
+=== Implementation Details
+
+The TUI integration required some refactoring of the logging infrastructure. Instead of directly printing logs to the console, the eBPF logger now updates a shared statistics structure:
+
+```rust
+pub struct Stats {
+    pub packets_seen: u64,
+    pub connections_tracked: u64,
+    pub pids_seen: HashSet<u32>,
+    pub recent_logs: Vec<String>,
+}
+```
+
+This structure is wrapped in `Arc<Mutex<>>` to allow safe sharing between the async task that reads eBPF logs and the TUI rendering loop. The TUI redraws every 100ms, checking for keyboard input and updating the display with the latest stats.
+
+The CLI mode (without `--tui`) remains available for scripting, logging to files, or running on systems without proper terminal support.
+
+=== Usability Impact
+
+The TUI makes development and debugging much more pleasant. Instead of watching logs scroll by, you can see aggregate statistics at a glance. This was particularly helpful during testing - it's immediately obvious when the cgroup program isn't capturing connections (the "Connections tracked" counter stays at zero) or when packets aren't being associated with PIDs (the "Unique PIDs" counter stays low while "Packets seen" increases).
+
+For end users, once the system implements actual packet redirection, the TUI will show which applications are currently being routed through VPN tunnels, making it easy to verify that policies are working as intended.
