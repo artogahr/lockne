@@ -6,6 +6,7 @@
 use aya::Ebpf;
 use log::warn;
 use tokio::io::unix::AsyncFd;
+use crate::ui::SharedStats;
 
 /// Setup eBPF logging and spawn a task to handle log messages
 ///
@@ -39,6 +40,48 @@ pub fn setup_ebpf_logger(ebpf: &mut Ebpf, limit: Option<u32>) -> anyhow::Result<
                         count += 1;
                         if count >= limit {
                             println!("Reached packet limit of {}, exiting...", limit);
+                            std::process::exit(0);
+                        }
+                    }
+                }
+            });
+            
+            Ok(())
+        }
+    }
+}
+
+/// Setup eBPF logger with stats tracking for TUI mode
+pub fn setup_ebpf_logger_with_stats(
+    ebpf: &mut Ebpf,
+    limit: Option<u32>,
+    stats: SharedStats,
+) -> anyhow::Result<()> {
+    match aya_log::EbpfLogger::init(ebpf) {
+        Err(e) => {
+            warn!("Failed to initialize eBPF logger: {}", e);
+            Ok(())
+        }
+        Ok(logger) => {
+            let mut logger = AsyncFd::with_interest(logger, tokio::io::Interest::READABLE)?;
+            
+            tokio::task::spawn(async move {
+                let mut count = 0u32;
+                loop {
+                    let mut guard = logger.readable_mut().await.unwrap();
+                    
+                    guard.get_inner_mut().flush();
+                    guard.clear_ready();
+
+                    // Update stats (just increment for now - we'd need to parse logs properly)
+                    {
+                        let mut s = stats.lock().unwrap();
+                        s.packets_seen += 1;
+                    }
+
+                    if let Some(limit) = limit {
+                        count += 1;
+                        if count >= limit {
                             std::process::exit(0);
                         }
                     }

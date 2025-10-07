@@ -22,6 +22,9 @@ tokio = { workspace = true, features = [
     "signal",
 ] }
 clap = { workspace = true, features = ["derive"] }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+
 [build-dependencies]
 anyhow = { workspace = true }
 aya-build = { workspace = true }

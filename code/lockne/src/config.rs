@@ -18,6 +18,10 @@ pub struct Config {
     /// Path to the root cgroup (usually /sys/fs/cgroup for cgroup v2)
     #[clap(long, default_value = "/sys/fs/cgroup")]
     pub cgroup_path: String,
+
+    /// Enable TUI (terminal user interface) mode
+    #[clap(long)]
+    pub tui: bool,
 }
 
 impl Config {
