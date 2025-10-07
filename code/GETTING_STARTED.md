@@ -18,6 +18,9 @@ cargo build --release
 # Launch curl and track its traffic
 sudo RUST_LOG=info ./target/release/lockne run curl http://example.com
 
+# Launch with TUI for live stats
+sudo ./target/release/lockne run curl http://example.com --tui
+
 # Or use the verification script
 sudo ./verify_tracking.sh
 ```

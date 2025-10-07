@@ -46,13 +46,43 @@ sudo -E cargo test --test integration_test test_process_tracking -- --ignored --
 
 ## Manual Verification
 
-To manually verify that process tracking works:
+### Method 1: Process Launcher Mode (Recommended)
 
-1. Build and run lockne:
+1. Build and run lockne with a specific program:
 ```bash
 cd code
 cargo build --release
-sudo -E RUST_LOG=info ./target/release/lockne --iface eno1
+sudo -E RUST_LOG=info ./target/release/lockne run curl http://example.com
+```
+
+2. Check the output. You should see:
+```
+Launching program: curl
+Started process with PID: 166985
+Tracked socket cookie=XXXXX for pid=166985
+74 10.0.0.70 ... cookie=XXXXX pid=166985
+```
+
+### Method 2: TUI Mode
+
+1. Run with TUI for live statistics:
+```bash
+sudo ./target/release/lockne run curl http://example.com --tui
+```
+
+2. The TUI will show:
+- Live packet count
+- Connections tracked
+- Unique PIDs seen
+- Scrolling log view
+
+### Method 3: Monitor Mode
+
+1. Build and run lockne in monitor mode:
+```bash
+cd code
+cargo build --release
+sudo -E RUST_LOG=info ./target/release/lockne monitor --iface eno1
 ```
 
 2. In another terminal, make HTTP requests:

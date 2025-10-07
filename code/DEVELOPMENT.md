@@ -37,9 +37,11 @@ lockne/
 - The control plane that loads and manages eBPF programs
 - Can also be used as a library (`lib.rs`)
 - Modules:
-  - `config.rs` - Command-line parsing
+  - `config.rs` - Command-line parsing and subcommands
   - `loader.rs` - eBPF program loading and attachment
   - `logger.rs` - Logging from eBPF to userspace
+  - `runner.rs` - Process launching and lifecycle management
+  - `ui.rs` - TUI interface with live statistics
   - `main.rs` - Wires everything together
 
 **3. lockne-common** (Shared)
@@ -67,18 +69,26 @@ Packet sent → TC program intercepts → looks up PID in map → logs it
 ### Adding a New CLI Option
 
 1. Edit `code/lockne/src/config.rs`
-2. Add your field to the `Config` struct with `#[clap(...)]` attributes
+2. Add your field to the appropriate command struct with `#[clap(...)]` attributes
 3. Use it in `main.rs` by accessing `config.your_field`
 
 Example:
 ```rust
-// In config.rs
-#[clap(long)]
-pub verbose: bool,
+// In config.rs - for the Run command
+#[derive(Debug, Subcommand)]
+pub enum Command {
+    Run {
+        #[clap(long)]
+        verbose: bool,
+        // ... other fields
+    }
+}
 
 // In main.rs
-if config.verbose {
-    // do something
+if let Command::Run { verbose, .. } = &config.command {
+    if *verbose {
+        // do something
+    }
 }
 ```
 
@@ -124,6 +134,24 @@ pub fn attach_my_program(&mut self) -> Result<()> {
 loader.attach_my_program()?;
 ```
 
+## New Modules (Added in Recent Commits)
+
+### runner.rs - Process Launcher
+- `launch_program()` - Spawns a subprocess and returns its PID
+- `wait_for_process()` - Waits for process completion or Ctrl-C
+- Used by the `lockne run <program>` command
+
+### ui.rs - Terminal User Interface
+- `run_tui()` - Main TUI loop using ratatui
+- `Stats` struct - Shared statistics between eBPF and TUI
+- Displays live packet counts, connections, and PIDs
+- Press 'q' to quit
+
+### Updated config.rs - Subcommands
+- Now uses clap subcommands (`run` vs `monitor`)
+- `Command::Run` - For launching programs
+- `Command::Monitor` - For monitoring all traffic
+
 ## Common Development Tasks
 
 ### Building
@@ -135,8 +163,14 @@ cargo build --release       # Release build
 
 ### Running
 ```bash
-# Must run as root for eBPF
-sudo -E RUST_LOG=info ./target/release/lockne --iface eno1
+# Process launcher mode (recommended)
+sudo -E RUST_LOG=info ./target/release/lockne run curl http://example.com
+
+# Monitor mode (original behavior)
+sudo -E RUST_LOG=info ./target/release/lockne monitor --iface eno1
+
+# With TUI
+sudo ./target/release/lockne run firefox --tui
 ```
 
 ### Testing

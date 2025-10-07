@@ -120,6 +120,9 @@ Currently, packets are logged with their originating PID. Next step is actual re
 - ✅ eBPF-based packet interception  
 - ✅ Low overhead (<1% CPU, ~60ns per packet)
 - ✅ IPv4 support
+- ✅ Process launcher mode (`lockne run <program>`)
+- ✅ TUI interface with live statistics
+- ✅ Modular, well-documented codebase
 - ⏳ Packet redirection (in progress)
 - ⏳ IPv6 support (planned)
 - ⏳ Process hierarchy tracking (planned)

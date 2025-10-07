@@ -12,6 +12,9 @@ This document outlines the planned features in priority order.
 - [x] Logging infrastructure
 - [x] Basic tests
 - [x] Code refactoring and documentation
+- [x] Process launcher mode (`lockne run <program>`)
+- [x] TUI interface with live statistics
+- [x] Modular architecture (separate modules for config, loader, logger, runner, ui)
 
 ## Phase 2: Actual Packet Redirection 🔄 NEXT
 
