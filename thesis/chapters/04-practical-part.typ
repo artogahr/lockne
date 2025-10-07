@@ -480,7 +480,7 @@ Based on the literature review and observed behavior:
 
 | Approach | Per-Packet Overhead | Memory Usage | CPU Impact |
 |----------|-------------------|--------------|------------|
-| Lockne (eBPF) | ~60 nanoseconds | 200 KB | <1% |
+| Lockne (eBPF) | ~60 nanoseconds | 200 KB | \<1% |
 | Userspace Proxy | ~10-50 microseconds | 10-50 MB | 5-10% |
 | Network Namespace | ~100 nanoseconds | 5-10 MB | 1-2% |
 
