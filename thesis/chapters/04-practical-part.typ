@@ -626,11 +626,17 @@ This means the system's performance is independent of load - it handles one pack
 
 Based on the literature review and observed behavior:
 
-| Approach | Per-Packet Overhead | Memory Usage | CPU Impact |
-|----------|-------------------|--------------|------------|
-| Lockne (eBPF) | ~60 nanoseconds | 200 KB | \<1% |
-| Userspace Proxy | ~10-50 microseconds | 10-50 MB | 5-10% |
-| Network Namespace | ~100 nanoseconds | 5-10 MB | 1-2% |
+#table(
+  columns: 4,
+  align: (left, left, left, left),
+  table.hline(),
+  [*Approach*], [*Per-Packet Overhead*], [*Memory Usage*], [*CPU Impact*],
+  table.hline(),
+  [Lockne (eBPF)], [~60 nanoseconds], [200 KB], [< 1%],
+  [Userspace Proxy], [~10-50 microseconds], [10-50 MB], [5-10%],
+  [Network Namespace], [~100 nanoseconds], [5-10 MB], [1-2%],
+  table.hline(),
+)
 
 While these are rough estimates, they show that the eBPF approach is 100-1000x faster than userspace proxies.
 
@@ -721,13 +727,13 @@ Tracking traffic for PID 166985
 [INFO] 74 10.0.0.70 23.220.75.232 cookie=4 pid=166985
 ```
 
-**Pros:**
+*Pros:*
 - Simple to implement and understand
 - Familiar pattern (like proxychains, strace, etc.)
 - Solves the ordering problem completely
 - Works with any command-line program
 
-**Cons:**
+*Cons:*
 - Can't attach to already-running processes
 - Requires restarting applications
 - Needs root privileges (users might find this annoying)
@@ -750,13 +756,13 @@ This would require a more complex architecture:
 - A separate CLI tool for policy management
 - Proper systemd integration
 
-**Pros:**
+*Pros:*
 - More professional and polished
 - Policies persist across application restarts
 - No need to remember to launch through lockne
 - Could integrate with desktop environments
 
-**Cons:**
+*Cons:*
 - Significantly more complex (IPC, daemon management, privilege separation)
 - Still has the existing-connection limitation
 - Overkill for a proof-of-concept thesis

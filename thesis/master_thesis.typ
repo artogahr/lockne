@@ -181,6 +181,7 @@
 #include "chapters/03-literature-review.typ"
 
 // These are placeholders for your future work
+#pagebreak()
 #include "chapters/04-practical-part.typ"
 #include "chapters/05-results.typ"
 #include "chapters/06-conclusion.typ"
