@@ -14,6 +14,35 @@ The general workflow for each feature was:
 
 This incremental approach meant the system was always in a working state, and bugs could be isolated to recent changes rather than searching through a large, complex codebase.
 
+=== Initial Project Setup with Aya
+
+Rather than building the project structure from scratch, the Aya framework provides cargo templates that generate a working skeleton. This is a huge time-saver and ensures the project follows best practices from the start.
+
+The initial setup process was:
+```bash
+# Install cargo-generate for creating projects from templates
+cargo install cargo-generate
+
+# Generate a new eBPF project from aya's template
+cargo generate https://github.com/aya-rs/aya-template
+```
+
+The template prompts for project details:
+- Project name: `lockne`
+- eBPF program type: `tc` (Traffic Control)
+- This created the three-crate structure automatically
+
+What the template provides out of the box:
+- Correct `Cargo.toml` dependencies for both eBPF and userspace
+- Build scripts (`build.rs`) that compile eBPF code during normal cargo builds
+- Proper `no_std` configuration for eBPF programs
+- Basic example of a TC classifier that does nothing
+- Userspace loader code that loads and attaches the eBPF program
+
+This foundation saved significant time - the build system, crate structure, and basic attachment logic were already working. Development could immediately focus on the actual logic rather than fighting with toolchain configuration.
+
+The template-generated code was minimal - about 50 lines of eBPF code and 100 lines of userspace code. From there, all the actual functionality (packet parsing, socket tracking, PID mapping) was implemented from scratch.
+
 == Project Structure and Organization
 
 The implementation started with setting up a basic eBPF project using the Aya framework. The project structure follows the standard Aya template with three main crates, each serving a distinct purpose:
@@ -58,49 +87,112 @@ The implementation progressed through several distinct phases, each building on 
 
 The first step was to get a minimal TC egress classifier working. This program doesn't do anything useful yet - it just intercepts packets and logs some basic information. However, it validates that the entire build and deployment pipeline works.
 
-At this stage, the program:
-- Parses Ethernet headers to check if the packet is IPv4
-- Extracts source and destination IP addresses
-- Logs the packet length and IPs using `aya_log_ebpf::info!()`
-- Returns `TC_ACT_PIPE` to allow the packet to continue normally
+The actual implementation work involved:
 
-The logging infrastructure is important. The `aya-log` crate provides a way for eBPF programs to send log messages to userspace, where they can be printed to the console. This is one of the few debugging tools available for eBPF development.
+*Packet Structure Definitions:* First, I had to define C-like structures for Ethernet and IPv4 headers:
+```rust
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct EthHdr {
+    pub h_dest: [u8; 6],
+    pub h_source: [u8; 6],
+    pub h_proto: u16,  // Network byte order!
+}
 
-Testing this phase was simple - run the program and generate any network traffic. If you see logs appearing with IP addresses, it's working.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct Ipv4Hdr {
+    pub version_ihl: u8,
+    pub tos: u8,
+    pub tot_len: u16,
+    // ... more fields
+    pub saddr: u32,
+    pub daddr: u32,
+}
+```
+
+The `#[repr(C)]` attribute is crucial - it tells Rust to use C memory layout, which matches how the kernel stores packet data.
+
+*Reading Packet Data Safely:* The eBPF verifier is very strict about memory access. You can't just cast pointers and read data. Instead, you use the context's `load()` method:
+```rust
+let eth_hdr: EthHdr = ctx.load(0).map_err(|_| 1)?;
+let ipv4_hdr: Ipv4Hdr = ctx.load(mem::size_of::<EthHdr>())
+    .map_err(|_| 1)?;
+```
+
+This validates that the packet is large enough to contain these headers before reading. If the packet is too small, the verifier knows the program won't crash.
+
+*Byte Order Conversion:* Network data is in big-endian (network byte order), but most systems are little-endian. Every value needs conversion:
+```rust
+if u16::from_be(eth_hdr.h_proto) != 0x0800 { // 0x0800 = IPv4
+    return Ok(TC_ACT_PIPE);
+}
+```
+
+*Setting Up Logging:* The userspace loader needed to initialize the logging subsystem:
+```rust
+match aya_log::EbpfLogger::init(&mut ebpf) {
+    Ok(logger) => {
+        // Spawn async task to read and print logs
+    }
+}
+```
+
+Testing this phase involved running the program and generating traffic (opening a web page, running `curl`). If logs appeared showing IP addresses and packet lengths, the foundation was working.
+
+*Initial Problems:* The first attempts failed because the `clsact` qdisc wasn't added to the interface. Linux requires this special queueing discipline for TC classifiers to attach. Adding `tc::qdisc_add_clsact()` fixed it.
 
 === Phase 2: Socket Cookie Extraction
 
 The next step was to add socket cookie extraction to the TC program. This required understanding how to access the socket associated with a packet.
 
-The TC context provides access to the packet's `sk_buff` structure through `ctx.skb.skb`. This structure contains a pointer to the socket that created the packet. The `bpf_get_socket_cookie()` helper function takes this pointer and returns the socket's unique cookie.
+*Understanding the TC Context:* The `TcContext` structure provides access to the packet through `ctx.skb`, which is a pointer to the kernel's `sk_buff` (socket buffer) structure. This is the fundamental packet representation in Linux networking. Buried within this structure is a reference to the socket that created the packet.
 
-The implementation was straightforward:
+*Finding the Right Helper:* The eBPF documentation lists hundreds of helper functions. Finding `bpf_get_socket_cookie()` required reading through the helper function reference and looking at example code from other projects. The Aya library provides a Rust wrapper for this helper.
+
+*Implementation:* The code looks simple but required careful attention to types:
 ```rust
 let socket_cookie = unsafe { 
     bpf_get_socket_cookie(ctx.skb.skb as *mut _) 
 };
 ```
 
-At this point, the logs started showing socket cookie values. Interestingly, many packets showed the same cookie (like cookie=1), which are likely from long-lived connections or kernel-internal sockets. New connections get unique, higher cookie values.
+The `unsafe` block is necessary because we're calling a C function that deals with raw pointers. The cast `as *mut _` converts Aya's wrapper type to the raw pointer the helper expects.
+
+*Testing and Observations:* After adding this, the logs started showing socket cookie values. An interesting discovery was that many packets had the same low cookie values (1, 2, 3), while others had much higher values (4096, 8192). This pattern suggests:
+- Low values: Long-lived connections or kernel-internal sockets
+- Higher values: Recently created sockets (the counter increments)
+- Cookie value 1 appeared frequently: Possibly loopback or system connections
+
+This phase validated that we could extract the socket cookie, but all packets still showed `pid=unknown` because we hadn't yet implemented the mapping from cookie to PID.
 
 === Phase 3: Creating the Shared Map
 
-Before implementing the cgroup program, we needed a place to store the socket-to-PID mappings. This required:
+Before implementing the cgroup program, we needed a place to store the socket-to-PID mappings. This required careful coordination between the kernel and userspace code.
 
-1. Defining the `Pid` type in `lockne-common`
-2. Creating a HashMap in the eBPF code
-3. Updating the TC program to look up PIDs from the map
+*Defining Shared Types:* To ensure both sides agree on data formats, a common type was defined in `lockne-common/src/lib.rs`:
+```rust
+pub type Pid = u32;
+```
 
-The map definition uses eBPF-specific attributes:
+This simple type alias ensures that when the eBPF code stores a PID and the userspace code reads it, they're using the same 32-bit representation. This seems trivial, but mismatches here cause subtle bugs that are hard to debug.
+
+*Creating the Map:* The eBPF map definition uses Aya's procedural macros:
 ```rust
 #[map]
 static SOCKET_PID_MAP: HashMap<u64, Pid> = 
     HashMap::with_max_entries(10240, 0);
 ```
 
-The `#[map]` attribute tells Aya this is an eBPF map. The `with_max_entries(10240, 0)` sets the maximum size - we can track up to 10,240 concurrent connections. The `0` is for flags, which we don't need.
+Breaking this down:
+- `#[map]` - Aya macro that generates the eBPF map boilerplate
+- `HashMap<u64, Pid>` - Key is socket cookie (u64), value is PID (u32)
+- `10240` - Maximum entries (chosen based on typical workloads)
+- `0` - Flags field (not needed for basic maps)
 
-At this stage, the TC program was updated to look up each socket cookie in the map:
+The 10,240 limit was chosen conservatively. A typical desktop has hundreds of sockets open, not thousands. This provides a 10-100x safety margin while only using ~200KB of kernel memory.
+
+*Map Access from eBPF:* Accessing maps requires `unsafe` because the eBPF verifier can't prove all map operations are safe:
 ```rust
 let pid = unsafe { SOCKET_PID_MAP.get(&socket_cookie) };
 match pid {
@@ -113,32 +205,72 @@ match pid {
 }
 ```
 
-Of course, at this point, the map was always empty, so every packet showed "pid=unknown". But the infrastructure was in place.
+*Why Unsafe?* The map could theoretically return `None` if it's full or if there's a hash collision. The eBPF verifier requires us to handle this case explicitly.
+
+At this stage, testing showed every packet with "pid=unknown" because the map was empty. This was expected - we hadn't yet implemented the code to populate it. But the lookup infrastructure was working.
 
 === Phase 4: The Cgroup Socket Tracker
 
 This was the most complex phase - implementing the program that actually populates the map. The cgroup/sock_addr program type is specifically designed for tracking socket operations.
 
-The program is attached to the `connect4` hook, which triggers whenever a process calls `connect()` on an IPv4 socket:
+*Understanding Cgroup Hooks:* Cgroups (control groups) are Linux's mechanism for organizing processes. Each cgroup can have eBPF programs attached that run when processes in that group perform certain operations. The `sock_addr` family of hooks trigger on socket address operations - `connect()`, `bind()`, `sendmsg()`, etc.
+
+*Choosing the Right Hook:* For tracking, the `connect4` (IPv4 connect) hook is ideal. It fires when a process calls `connect()` to establish a TCP connection or send UDP data. This captures most user-initiated network activity.
+
+*Program Structure:* The Aya macro makes the hook attachment declarative:
 ```rust
 #[cgroup_sock_addr(connect4)]
 pub fn lockne_connect4(ctx: SockAddrContext) -> i32 {
-    // Implementation
+    match unsafe { try_lockne_connect4(ctx) } {
+        Ok(ret) => ret,
+        Err(_) => 1,  // Return 1 = allow the connection
+    }
 }
 ```
 
-Inside the program, we need to:
-1. Get the socket cookie from the `SockAddrContext`
-2. Get the current process ID
-3. Store the mapping
+The return value matters: returning 1 allows the connection to proceed, while 0 would reject it. We always return 1 since we're only observing, not filtering.
 
-The tricky part is extracting the PID correctly. The `bpf_get_current_pid_tgid()` helper returns a 64-bit value containing both the thread ID and thread group ID:
+*Extracting the Socket Cookie:* The `SockAddrContext` provides access to the socket being operated on, but the interface is different from the TC context:
 ```rust
-let pid_tgid = bpf_get_current_pid_tgid();
-let pid = (pid_tgid >> 32) as u32;  // Upper 32 bits = PID
+let sock_cookie = bpf_get_socket_cookie(ctx.sock_addr as *mut _);
 ```
 
-Why the bit shifting? In Linux, what we normally think of as a "process ID" is actually the thread group ID (TGID). Each thread in a process has its own thread ID, but they all share the same TGID. For tracking network connections, we want the TGID because that identifies the whole process, not individual threads.
+Here, we pass `ctx.sock_addr` (not `ctx.skb.skb`). This took some trial and error - the compiler errors for incorrect pointer types in eBPF are not always clear.
+
+*Getting the Process ID - The Tricky Part:* The `bpf_get_current_pid_tgid()` helper doesn't just return a PID. It returns a 64-bit value encoding both thread and process IDs:
+```rust
+let pid_tgid = bpf_get_current_pid_tgid();
+let pid = (pid_tgid >> 32) as u32;
+```
+
+Breaking this down:
+- Bits 0-31 (lower 32 bits): Thread ID (TID)
+- Bits 32-63 (upper 32 bits): Thread Group ID (TGID)
+
+The TGID is what we normally call the "process ID". In Linux, a process is actually a group of threads. Each thread has its own TID, but they all share a TGID. For our purposes, we want the TGID because we're tracking applications (processes), not individual threads.
+
+*Storing the Mapping:* Finally, we insert into the map:
+```rust
+SOCKET_PID_MAP.insert(&sock_cookie, &pid, 0)
+    .map_err(|e| e as i64)?;
+```
+
+The `0` is a flags parameter (unused for basic inserts). The `map_err` converts any error to our error type.
+
+*First Test - The Moment of Truth:* After implementing this and rebuilding, the first test was exciting:
+```bash
+sudo ./target/release/lockne --iface eno1
+# In another terminal:
+curl http://example.com
+```
+
+The logs showed:
+```
+[INFO  lockne] Tracked socket cookie=20481 for pid=143192
+[INFO  lockne] 74 10.0.0.70 23.192.228.80 cookie=20481 pid=143192
+```
+
+It worked! The cgroup program captured the socket creation with its PID, and the TC program found that PID when intercepting packets.
 
 === Phase 5: Userspace Integration
 
