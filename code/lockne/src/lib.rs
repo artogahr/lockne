@@ -7,6 +7,7 @@ pub mod loader;
 pub mod logger;
 pub mod config;
 pub mod ui;
+pub mod runner;
 
 pub use config::Config;
 pub use loader::LockneLoader;
