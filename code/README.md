@@ -29,12 +29,28 @@ cargo build --release
 
 ### Run
 
+**Launch a program and track its traffic (recommended):**
 ```bash
-# Track packets on your main network interface
-sudo -E RUST_LOG=info ./target/release/lockne --iface eno1
+# Run curl and track its packets
+sudo lockne run curl http://example.com
+
+# Run firefox and track all its traffic
+sudo lockne run firefox
+
+# With TUI mode for live stats
+sudo lockne run firefox --tui
+```
+
+**Monitor all system traffic:**
+```bash
+# Monitor everything
+sudo lockne monitor --iface eno1
 
 # With packet limit (useful for testing)
-sudo -E RUST_LOG=info ./target/release/lockne --iface eno1 --limit 10
+sudo lockne monitor --iface eno1 --limit 10
+
+# With TUI
+sudo lockne monitor --iface eno1 --tui
 ```
 
 ### Verify It Works
@@ -42,6 +58,10 @@ sudo -E RUST_LOG=info ./target/release/lockne --iface eno1 --limit 10
 ```bash
 # Run the verification script
 sudo ./verify_tracking.sh
+
+# Or test the launcher directly
+sudo RUST_LOG=info ./target/release/lockne run curl -s http://example.com
+# You should see "Tracked socket cookie=... for pid=..." messages
 ```
 
 ## Project Structure

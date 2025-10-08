@@ -6,19 +6,28 @@ Welcome! This guide will help you understand the codebase and start adding featu
 
 You have a **working** system that can:
 - Track which process sends each network packet
+- Launch programs and automatically track their traffic
 - Use eBPF for high-performance packet interception
-- Log packet information with associated PIDs
+- Show live stats with a TUI interface
 
 **Try it yourself:**
 ```bash
 cd code
+cargo build --release
+
+# Launch curl and track its traffic
+sudo RUST_LOG=info ./target/release/lockne run curl http://example.com
+
+# Or use the verification script
 sudo ./verify_tracking.sh
 ```
 
 You should see output like:
 ```
-✓ SUCCESS! Found packets from curl (PID 150114)
-Total packets from curl: 13
+Launching program: curl
+Started process with PID: 166985
+Tracked socket cookie=4 for pid=166985
+74 10.0.0.70 23.220.75.232 cookie=4 pid=166985
 ```
 
 ## Understanding the Code
