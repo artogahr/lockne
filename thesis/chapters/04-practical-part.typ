@@ -679,15 +679,129 @@ Despite these limitations, the current implementation proves the fundamental con
 
 == User Interface and Usability
 
-While the core functionality operates at the kernel level, how users interact with the system matters. The initial implementation used simple console logging - packets were printed to the terminal as they were intercepted. This works for debugging but isn't ideal for monitoring a running system.
+While the core functionality operates at the kernel level, how users interact with the system matters. A critical UX question emerged during development: how should users specify which applications to track?
+
+=== The "Existing Process" Problem
+
+The initial design had a fundamental usability issue. Users would:
+1. Start lockne
+2. Manually launch their applications
+3. Hope they remember to do things in the right order
+
+This is awkward. If you forget and launch an application before starting lockne, none of its traffic gets tracked. For a tool meant to be user-friendly, this is unacceptable.
+
+Two architectural approaches were considered to solve this:
+
+==== Approach 1: Process Launcher (Implemented)
+
+The first approach, inspired by tools like `proxychains`, is to have lockne launch the target application itself:
+```bash
+sudo lockne run firefox
+sudo lockne run curl http://example.com
+```
+
+This solves the ordering problem completely. The workflow becomes:
+1. Lockne starts and attaches eBPF programs
+2. Lockne forks and launches the target application
+3. All of the application's connections are automatically tracked
+4. When the application exits, lockne exits
+
+This approach was implemented using Rust's `std::process::Command` API. The launcher:
+- Spawns the target program as a child process
+- Captures its PID
+- Monitors both the child process and Ctrl-C signals
+- Exits gracefully when either occurs
+
+The implementation is clean and straightforward - about 50 lines of code. Testing showed it works perfectly:
+```
+[INFO] Launching program: curl ["http://example.com"]
+[INFO] Started process with PID: 166985
+Tracking traffic for PID 166985
+[INFO] Tracked socket cookie=4 for pid=166985
+[INFO] 74 10.0.0.70 23.220.75.232 cookie=4 pid=166985
+```
+
+**Pros:**
+- Simple to implement and understand
+- Familiar pattern (like proxychains, strace, etc.)
+- Solves the ordering problem completely
+- Works with any command-line program
+
+**Cons:**
+- Can't attach to already-running processes
+- Requires restarting applications
+- Needs root privileges (users might find this annoying)
+
+==== Approach 2: Background Daemon (Future Work)
+
+The second approach would be to run lockne as a persistent system service:
+```bash
+# System-level service running in background
+sudo systemctl start lockne
+
+# User adds policies from their session
+lockne policy add --pid 1234 --action redirect
+lockne policy add --name firefox --action redirect
+```
+
+This would require a more complex architecture:
+- A daemon that runs at boot time (always tracking)
+- An IPC mechanism (Unix socket, D-Bus) for user commands
+- A separate CLI tool for policy management
+- Proper systemd integration
+
+**Pros:**
+- More professional and polished
+- Policies persist across application restarts
+- No need to remember to launch through lockne
+- Could integrate with desktop environments
+
+**Cons:**
+- Significantly more complex (IPC, daemon management, privilege separation)
+- Still has the existing-connection limitation
+- Overkill for a proof-of-concept thesis
+
+For this thesis, Approach 1 (process launcher) was chosen. It provides the usability improvements needed to make lockne practical while keeping the implementation simple and focused on the core eBPF technology. The daemon approach is left as future work for a production-ready system.
+
+=== CLI Design: Subcommands
+
+To support both the launcher and the original monitoring mode, the CLI was restructured to use subcommands:
+
+```bash
+# Launch and track a specific program
+sudo lockne run <program> [args...]
+
+# Monitor all system traffic (original behavior)
+sudo lockne monitor --iface eno1
+```
+
+This is implemented using clap's subcommand feature:
+```rust
+#[derive(Debug, Subcommand)]
+pub enum Command {
+    Run {
+        iface: String,
+        tui: bool,
+        program: Vec<String>,
+    },
+    Monitor {
+        iface: String,
+        limit: Option<u32>,
+        tui: bool,
+    },
+}
+```
+
+The `run` command uses `trailing_var_arg = true` to capture the program name and all its arguments, just like how `exec` or `strace` work.
 
 === Terminal User Interface with Ratatui
 
 To improve usability, a terminal user interface (TUI) was added using the Ratatui library. Ratatui is a Rust framework for building text-based UIs that run in the terminal. It provides widgets like boxes, lists, and progress bars, making it possible to create dashboard-like interfaces without needing a graphical environment.
 
-The TUI mode can be enabled with the `--tui` flag:
+The TUI mode can be enabled with the `--tui` flag in either mode:
 ```bash
-sudo ./lockne --iface eno1 --tui
+sudo lockne run firefox --tui
+sudo lockne monitor --iface eno1 --tui
 ```
 
 The interface displays:
