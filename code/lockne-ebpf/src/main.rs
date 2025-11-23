@@ -7,17 +7,21 @@ use aya_ebpf::{
     macros::{classifier, cgroup_sock_addr, map},
     maps::HashMap,
     programs::{TcContext, SockAddrContext},
-    helpers::{bpf_get_socket_cookie, bpf_get_current_pid_tgid},
+    helpers::{bpf_get_socket_cookie, bpf_get_current_pid_tgid, bpf_redirect},
 };
 use aya_log_ebpf::info;
 use core::mem;
-use lockne_common::Pid;
+use lockne_common::{Pid, PolicyEntry};
 
 // Map to store socket cookie -> PID mappings
-// This will be populated by a cgroup/sock_addr program (to be implemented)
-// and read by this TC classifier program
+// Populated by cgroup/sock_addr program when connections are made
 #[map]
 static SOCKET_PID_MAP: HashMap<u64, Pid> = HashMap::with_max_entries(10240, 0);
+
+// Policy map: PID -> redirect target interface index
+// If a PID is in this map with ifindex > 0, redirect its traffic
+#[map]
+static POLICY_MAP: HashMap<Pid, PolicyEntry> = HashMap::with_max_entries(1024, 0);
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -81,13 +85,31 @@ fn try_lockne(ctx: TcContext) -> Result<i32, i32> {
 
     match pid {
         Some(pid_value) => {
-            info!(&ctx, "{} {}.{}.{}.{} {}.{}.{}.{} cookie={} pid={}", 
-                ctx.len(), 
-                source_a, source_b, source_c, source_d,
-                dest_a, dest_b, dest_c, dest_d,
-                socket_cookie,
-                *pid_value
-            );
+            // Check if this PID has a redirect policy
+            let policy = unsafe { POLICY_MAP.get(pid_value) };
+            
+            match policy {
+                Some(entry) if entry.ifindex > 0 => {
+                    // Redirect this packet to the specified interface
+                    info!(&ctx, "REDIRECT {}.{}.{}.{} -> {}.{}.{}.{} pid={} ifindex={}", 
+                        source_a, source_b, source_c, source_d,
+                        dest_a, dest_b, dest_c, dest_d,
+                        *pid_value,
+                        entry.ifindex
+                    );
+                    return Ok(unsafe { bpf_redirect(entry.ifindex, 0) } as i32);
+                }
+                _ => {
+                    // No redirect policy, just log
+                    info!(&ctx, "{} {}.{}.{}.{} {}.{}.{}.{} cookie={} pid={}", 
+                        ctx.len(), 
+                        source_a, source_b, source_c, source_d,
+                        dest_a, dest_b, dest_c, dest_d,
+                        socket_cookie,
+                        *pid_value
+                    );
+                }
+            }
         }
         None => {
             // No PID mapping found for this socket cookie

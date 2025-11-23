@@ -14,10 +14,15 @@ pub struct Config {
 pub enum Command {
     /// Run a command with traffic tracking
     /// Example: lockne run firefox
+    /// Example with redirect: lockne run --redirect-to wg0 curl http://example.com
     Run {
-        /// Network interface to attach to
+        /// Network interface to attach to (for packet capture)
         #[clap(short, long, default_value = "eno1")]
         iface: String,
+
+        /// Redirect traffic to this interface (e.g., wg0 for WireGuard)
+        #[clap(long)]
+        redirect_to: Option<String>,
 
         /// Enable TUI mode
         #[clap(long)]

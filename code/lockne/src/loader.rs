@@ -3,12 +3,25 @@
 //! This module handles loading the compiled eBPF programs and attaching
 //! them to the appropriate kernel hooks.
 
+use aya::maps::HashMap;
 use aya::programs::{CgroupAttachMode, CgroupSockAddr, SchedClassifier, TcAttachType, tc};
 use aya::Ebpf;
 use log::{debug, info};
 use std::fs::File;
+use std::ffi::CString;
+use lockne_common::{Pid, PolicyEntry};
 
 use crate::Result;
+
+/// Get the interface index for an interface name
+pub fn get_ifindex(iface: &str) -> Result<u32> {
+    let c_iface = CString::new(iface)?;
+    let ifindex = unsafe { libc::if_nametoindex(c_iface.as_ptr()) };
+    if ifindex == 0 {
+        anyhow::bail!("Interface '{}' not found", iface);
+    }
+    Ok(ifindex)
+}
 
 /// Main loader for Lockne eBPF programs
 pub struct LockneLoader {
@@ -81,6 +94,41 @@ impl LockneLoader {
         program.attach(cgroup_file, CgroupAttachMode::Single)?;
 
         info!("Successfully attached cgroup program");
+        Ok(())
+    }
+
+    /// Set a redirect policy for a specific PID
+    ///
+    /// Traffic from this PID will be redirected to the specified interface.
+    ///
+    /// # Arguments
+    /// * `pid` - The process ID to redirect traffic for
+    /// * `ifindex` - The interface index to redirect to
+    pub fn set_redirect_policy(&mut self, pid: Pid, ifindex: u32) -> Result<()> {
+        let mut policy_map: HashMap<_, Pid, PolicyEntry> = 
+            self.ebpf.map_mut("POLICY_MAP")
+                .ok_or_else(|| anyhow::anyhow!("POLICY_MAP not found"))?
+                .try_into()?;
+
+        let entry = PolicyEntry {
+            ifindex,
+            flags: 0,
+        };
+
+        policy_map.insert(pid, entry, 0)?;
+        info!("Set redirect policy: PID {} -> ifindex {}", pid, ifindex);
+        Ok(())
+    }
+
+    /// Remove a redirect policy for a PID
+    pub fn remove_redirect_policy(&mut self, pid: Pid) -> Result<()> {
+        let mut policy_map: HashMap<_, Pid, PolicyEntry> = 
+            self.ebpf.map_mut("POLICY_MAP")
+                .ok_or_else(|| anyhow::anyhow!("POLICY_MAP not found"))?
+                .try_into()?;
+
+        policy_map.remove(&pid)?;
+        info!("Removed redirect policy for PID {}", pid);
         Ok(())
     }
 

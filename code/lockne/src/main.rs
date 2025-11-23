@@ -4,7 +4,6 @@
 //! See the library documentation for more details on the architecture.
 
 use lockne::{config::Command, Config, LockneLoader};
-use log::info;
 use tokio::signal;
 
 #[tokio::main]
@@ -22,8 +21,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Handle different commands
     match &config.command {
-        Command::Run { program, .. } => {
-            run_program_mode(loader, &config, program).await?;
+        Command::Run { program, redirect_to, .. } => {
+            run_program_mode(loader, &config, program, redirect_to.as_deref()).await?;
         }
         Command::Monitor { limit, .. } => {
             run_monitor_mode(loader, &config, *limit).await?;
@@ -38,6 +37,7 @@ async fn run_program_mode(
     mut loader: LockneLoader,
     config: &Config,
     program: &[String],
+    redirect_to: Option<&str>,
 ) -> anyhow::Result<()> {
     // Setup eBPF logging
     lockne::logger::setup_ebpf_logger(loader.ebpf_mut(), None)?;
@@ -50,10 +50,22 @@ async fn run_program_mode(
     let child = lockne::runner::launch_program(program)?;
     let pid = child.id();
 
-    println!("Tracking traffic for PID {} (press Ctrl-C to stop)", pid);
+    // Set up redirect policy if requested
+    if let Some(target_iface) = redirect_to {
+        let ifindex = lockne::loader::get_ifindex(target_iface)?;
+        loader.set_redirect_policy(pid, ifindex)?;
+        println!("Redirecting traffic for PID {} to interface {} (ifindex {})", pid, target_iface, ifindex);
+    } else {
+        println!("Tracking traffic for PID {} (press Ctrl-C to stop)", pid);
+    }
     
     // Wait for the program to exit or Ctrl-C
     lockne::runner::wait_for_process(child).await?;
+
+    // Clean up policy
+    if redirect_to.is_some() {
+        let _ = loader.remove_redirect_policy(pid);
+    }
 
     println!("Exiting...");
     Ok(())
@@ -61,7 +73,7 @@ async fn run_program_mode(
 
 /// Monitor all system traffic (old behavior)
 async fn run_monitor_mode(
-    mut loader: LockneLoader,
+    loader: LockneLoader,
     config: &Config,
     limit: Option<u32>,
 ) -> anyhow::Result<()> {
