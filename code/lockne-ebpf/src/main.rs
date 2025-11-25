@@ -46,6 +46,20 @@ pub struct Ipv4Hdr {
     pub daddr: u32,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct Ipv6Hdr {
+    pub version_tc_flow: u32, // version (4 bits), traffic class (8 bits), flow label (20 bits)
+    pub payload_len: u16,
+    pub next_hdr: u8,
+    pub hop_limit: u8,
+    pub saddr: [u8; 16],
+    pub daddr: [u8; 16],
+}
+
+const ETH_P_IP: u16 = 0x0800;
+const ETH_P_IPV6: u16 = 0x86DD;
+
 
 #[classifier]
 pub fn lockne(ctx: TcContext) -> i32 {
@@ -57,11 +71,17 @@ pub fn lockne(ctx: TcContext) -> i32 {
 
 fn try_lockne(ctx: TcContext) -> Result<i32, i32> {
     let eth_hdr: EthHdr = ctx.load(0).map_err(|_| 1)?;
-    if u16::from_be(eth_hdr.h_proto) != 0x0800 {
-        // Not an IPv4 packet, pass it through
-        return Ok(TC_ACT_PIPE);
+    let proto = u16::from_be(eth_hdr.h_proto);
+    
+    // Handle both IPv4 and IPv6
+    match proto {
+        ETH_P_IP => handle_ipv4(&ctx),
+        ETH_P_IPV6 => handle_ipv6(&ctx),
+        _ => Ok(TC_ACT_PIPE), // Not IP, pass through
     }
+}
 
+fn handle_ipv4(ctx: &TcContext) -> Result<i32, i32> {
     let ipv4_hdr: Ipv4Hdr = ctx.load(mem::size_of::<EthHdr>()).map_err(|_| 1)?;
     let source = u32::from_be(ipv4_hdr.saddr);
     let dest = u32::from_be(ipv4_hdr.daddr);
@@ -91,7 +111,7 @@ fn try_lockne(ctx: TcContext) -> Result<i32, i32> {
             match policy {
                 Some(entry) if entry.ifindex > 0 => {
                     // Redirect this packet to the specified interface
-                    info!(&ctx, "REDIRECT {}.{}.{}.{} -> {}.{}.{}.{} pid={} ifindex={}", 
+                    info!(ctx, "REDIRECT {}.{}.{}.{} -> {}.{}.{}.{} pid={} ifindex={}", 
                         source_a, source_b, source_c, source_d,
                         dest_a, dest_b, dest_c, dest_d,
                         *pid_value,
@@ -101,7 +121,7 @@ fn try_lockne(ctx: TcContext) -> Result<i32, i32> {
                 }
                 _ => {
                     // No redirect policy, just log
-                    info!(&ctx, "{} {}.{}.{}.{} {}.{}.{}.{} cookie={} pid={}", 
+                    info!(ctx, "{} {}.{}.{}.{} {}.{}.{}.{} cookie={} pid={}", 
                         ctx.len(), 
                         source_a, source_b, source_c, source_d,
                         dest_a, dest_b, dest_c, dest_d,
@@ -113,7 +133,7 @@ fn try_lockne(ctx: TcContext) -> Result<i32, i32> {
         }
         None => {
             // No PID mapping found for this socket cookie
-            info!(&ctx, "{} {}.{}.{}.{} {}.{}.{}.{} cookie={} pid=unknown", 
+            info!(ctx, "{} {}.{}.{}.{} {}.{}.{}.{} cookie={} pid=unknown", 
                 ctx.len(), 
                 source_a, source_b, source_c, source_d,
                 dest_a, dest_b, dest_c, dest_d,
@@ -125,9 +145,41 @@ fn try_lockne(ctx: TcContext) -> Result<i32, i32> {
     Ok(TC_ACT_PIPE)
 }
 
-// This program is attached to a cgroup and is called whenever a process
-// in that cgroup performs a socket operation (like connect or sendmsg).
-// We use this to capture the mapping between a socket and the process that owns it.
+fn handle_ipv6(ctx: &TcContext) -> Result<i32, i32> {
+    let _ipv6_hdr: Ipv6Hdr = ctx.load(mem::size_of::<EthHdr>()).map_err(|_| 1)?;
+
+    // Try to get the socket cookie for this packet
+    let socket_cookie = unsafe { bpf_get_socket_cookie(ctx.skb.skb as *mut _) };
+
+    // Look up the PID associated with this socket cookie
+    let pid = unsafe { SOCKET_PID_MAP.get(&socket_cookie) };
+
+    match pid {
+        Some(pid_value) => {
+            // Check if this PID has a redirect policy
+            let policy = unsafe { POLICY_MAP.get(pid_value) };
+            
+            match policy {
+                Some(entry) if entry.ifindex > 0 => {
+                    info!(ctx, "REDIRECT6 pid={} ifindex={}", *pid_value, entry.ifindex);
+                    return Ok(unsafe { bpf_redirect(entry.ifindex, 0) } as i32);
+                }
+                _ => {
+                    info!(ctx, "IPv6 {} cookie={} pid={}", ctx.len(), socket_cookie, *pid_value);
+                }
+            }
+        }
+        None => {
+            info!(ctx, "IPv6 {} cookie={} pid=unknown", ctx.len(), socket_cookie);
+        }
+    }
+
+    Ok(TC_ACT_PIPE)
+}
+
+// These programs are attached to a cgroup and called when processes
+// perform socket operations. We use them to capture socket -> PID mappings.
+
 #[cgroup_sock_addr(connect4)]
 pub fn lockne_connect4(ctx: SockAddrContext) -> i32 {
     match unsafe { try_lockne_connect4(ctx) } {
@@ -137,23 +189,34 @@ pub fn lockne_connect4(ctx: SockAddrContext) -> i32 {
 }
 
 unsafe fn try_lockne_connect4(ctx: SockAddrContext) -> Result<i32, i64> {
-    // Get the socket cookie - a unique, stable identifier for this socket
     let sock_cookie = bpf_get_socket_cookie(ctx.sock_addr as *mut _);
-    
-    // Get the PID of the process making this connection
-    // bpf_get_current_pid_tgid returns both PID and TGID in a u64
-    // The upper 32 bits are the TGID (thread group ID, which is the actual process ID)
-    // The lower 32 bits are the PID (thread ID)
     let pid_tgid = bpf_get_current_pid_tgid();
     let pid = (pid_tgid >> 32) as u32;
     
-    // Store the mapping in our hash map
     SOCKET_PID_MAP.insert(&sock_cookie, &pid, 0)
         .map_err(|e| e as i64)?;
     
     info!(&ctx, "Tracked socket cookie={} for pid={}", sock_cookie, pid);
+    Ok(1)
+}
+
+#[cgroup_sock_addr(connect6)]
+pub fn lockne_connect6(ctx: SockAddrContext) -> i32 {
+    match unsafe { try_lockne_connect6(ctx) } {
+        Ok(ret) => ret,
+        Err(_) => 1,
+    }
+}
+
+unsafe fn try_lockne_connect6(ctx: SockAddrContext) -> Result<i32, i64> {
+    let sock_cookie = bpf_get_socket_cookie(ctx.sock_addr as *mut _);
+    let pid_tgid = bpf_get_current_pid_tgid();
+    let pid = (pid_tgid >> 32) as u32;
     
-    // Return 1 to allow the connection to proceed
+    SOCKET_PID_MAP.insert(&sock_cookie, &pid, 0)
+        .map_err(|e| e as i64)?;
+    
+    info!(&ctx, "Tracked6 socket cookie={} for pid={}", sock_cookie, pid);
     Ok(1)
 }
 

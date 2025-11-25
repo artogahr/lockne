@@ -73,27 +73,40 @@ impl LockneLoader {
         Ok(())
     }
 
-    /// Attach the cgroup socket tracking program
+    /// Attach the cgroup socket tracking programs (both IPv4 and IPv6)
     ///
-    /// This program tracks socket creation events to build the PID mapping.
+    /// These programs track socket creation events to build the PID mapping.
     ///
     /// # Arguments
     /// * `cgroup_path` - Path to cgroup to attach to (usually /sys/fs/cgroup)
     pub fn attach_cgroup_program(&mut self, cgroup_path: &str) -> Result<()> {
         info!("Attaching cgroup socket tracking to {}", cgroup_path);
 
-        let program: &mut CgroupSockAddr = self
+        // Attach IPv4 connect tracker
+        let program4: &mut CgroupSockAddr = self
             .ebpf
             .program_mut("lockne_connect4")
             .ok_or_else(|| anyhow::anyhow!("Cgroup program 'lockne_connect4' not found"))?
             .try_into()?;
 
-        program.load()?;
-
+        program4.load()?;
         let cgroup_file = File::open(cgroup_path)?;
-        program.attach(cgroup_file, CgroupAttachMode::Single)?;
+        program4.attach(cgroup_file, CgroupAttachMode::Single)?;
+        info!("Attached IPv4 connect tracker");
 
-        info!("Successfully attached cgroup program");
+        // Attach IPv6 connect tracker
+        let program6: &mut CgroupSockAddr = self
+            .ebpf
+            .program_mut("lockne_connect6")
+            .ok_or_else(|| anyhow::anyhow!("Cgroup program 'lockne_connect6' not found"))?
+            .try_into()?;
+
+        program6.load()?;
+        let cgroup_file = File::open(cgroup_path)?;
+        program6.attach(cgroup_file, CgroupAttachMode::Single)?;
+        info!("Attached IPv6 connect tracker");
+
+        info!("Successfully attached cgroup programs");
         Ok(())
     }
 
