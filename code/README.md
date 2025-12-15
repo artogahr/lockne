@@ -7,7 +7,8 @@ Lockne is a system for routing network traffic on a per-application basis using 
 ## Current Status
 
 ✅ **Working**: Process-to-packet mapping via socket cookies  
-🔄 **In Progress**: Actual packet redirection (see ROADMAP.md)
+✅ **Working**: Packet redirection via `--redirect-to` flag  
+✅ **Working**: IPv4 and IPv6 support
 
 ## Quick Start
 
@@ -39,6 +40,9 @@ sudo lockne run firefox
 
 # With TUI mode for live stats
 sudo lockne run firefox --tui
+
+# Redirect traffic through a specific interface (e.g., WireGuard)
+sudo lockne run --redirect-to wg0 curl http://example.com
 ```
 
 **Monitor all system traffic:**
@@ -79,14 +83,7 @@ code/
 └── lockne-common/       # Shared types
 ```
 
-See **DEVELOPMENT.md** for detailed architecture docs.
-
-## Documentation
-
-- **DEVELOPMENT.md** - Architecture and how to add features
-- **ROADMAP.md** - Planned features and next steps
-- **TESTING.md** - How to test the system
-- **thesis/** - Academic thesis documentation
+See the thesis documentation for detailed architecture information.
 
 ## Development
 
@@ -108,24 +105,24 @@ cargo clippy
 
 ## How It Works
 
-1. **Cgroup program** captures socket creation events, storing PID → socket cookie mappings
+1. **Cgroup programs** (connect4/connect6) capture socket creation events, storing PID → socket cookie mappings
 2. **TC classifier** intercepts outgoing packets, looks up their PID using the socket cookie
-3. **Userspace loader** manages the eBPF programs and provides control interface
-
-Currently, packets are logged with their originating PID. Next step is actual redirection to WireGuard interfaces.
+3. **Policy map** determines if traffic from a specific PID should be redirected
+4. **bpf_redirect()** sends matching packets to the target interface (e.g., WireGuard tunnel)
+5. **Userspace loader** manages eBPF programs and provides CLI interface
 
 ## Features
 
 - ✅ Process tracking via socket cookies
 - ✅ eBPF-based packet interception  
 - ✅ Low overhead (<1% CPU, ~60ns per packet)
-- ✅ IPv4 support
+- ✅ IPv4 and IPv6 support
 - ✅ Process launcher mode (`lockne run <program>`)
 - ✅ TUI interface with live statistics
-- ✅ Modular, well-documented codebase
-- ⏳ Packet redirection (in progress)
-- ⏳ IPv6 support (planned)
+- ✅ Packet redirection (`--redirect-to <interface>`)
+- ✅ Policy-based routing per PID
 - ⏳ Process hierarchy tracking (planned)
+- ⏳ Automatic socket cleanup (planned)
 
 ## Use Cases
 
