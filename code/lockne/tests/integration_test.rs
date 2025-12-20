@@ -50,9 +50,11 @@ mod linux_only {
         // Check that our programs are present
         assert!(ebpf.program("lockne").is_some(), "TC program 'lockne' not found");
         assert!(ebpf.program("lockne_connect4").is_some(), "Cgroup program 'lockne_connect4' not found");
+        assert!(ebpf.program("lockne_connect6").is_some(), "Cgroup program 'lockne_connect6' not found");
         
-        // Check that the map exists
+        // Check that the maps exist
         assert!(ebpf.maps().any(|(name, _)| name == "SOCKET_PID_MAP"), "SOCKET_PID_MAP not found");
+        assert!(ebpf.maps().any(|(name, _)| name == "POLICY_MAP"), "POLICY_MAP not found");
     }
 
     /// Integration test that actually tracks a process
