@@ -87,7 +87,7 @@ Revisiting the objectives from the thesis proposal:
     [Process-to-packet mapping], [✓], [Working via socket cookies],
     [Policy-based routing], [✓], [Per-PID redirect policies],
     [WireGuard integration], [Partial], [Redirect to wg interfaces works],
-    [Low overhead], [✓], [<1% CPU, <1ms latency impact],
+    [Low overhead], [✓], [\<1% CPU, \<1ms latency impact],
     [User-friendly interface], [✓], [CLI and TUI implemented],
     [IPv4 support], [✓], [Full support],
     [IPv6 support], [✓], [Added late in development],
