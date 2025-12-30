@@ -1,0 +1,4 @@
+test,mean_ms,stddev_ms,min_ms,max_ms
+Baseline (no interception),38.31,13.14,19.20,61.65
+Lockne Monitor Mode,539.49,1496.17,27.21,5027.79
+Lockne Run Mode,130.00,46.25,89.82,262.22

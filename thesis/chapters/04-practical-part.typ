@@ -43,6 +43,69 @@ This foundation saved significant time - the build system, crate structure, and 
 
 The template-generated code was minimal - about 50 lines of eBPF code and 100 lines of userspace code. From there, all the actual functionality (packet parsing, socket tracking, PID mapping) was implemented from scratch.
 
+== System Architecture Overview
+
+Before diving into the implementation details, it is helpful to understand the overall architecture of Lockne. The system consists of two main domains: kernel-space eBPF programs and userspace control logic.
+
+#figure(
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         USERSPACE                               │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐      │
+│  │   lockne     │    │  Target App  │    │   Config/    │      │
+│  │   daemon     │───▶│  (e.g. curl) │    │   Policy     │      │
+│  └──────┬───────┘    └──────────────┘    └──────┬───────┘      │
+│         │ load/attach                           │ update       │
+│         ▼                                       ▼              │
+├─────────────────────────────────────────────────────────────────┤
+│                    eBPF MAPS (shared state)                     │
+│  ┌─────────────────────┐    ┌─────────────────────┐            │
+│  │   SOCKET_PID_MAP    │    │     POLICY_MAP      │            │
+│  │  cookie → PID       │    │   PID → ifindex     │            │
+│  └─────────────────────┘    └─────────────────────┘            │
+├─────────────────────────────────────────────────────────────────┤
+│                      KERNEL SPACE                               │
+│                                                                 │
+│  ┌────────────────────────────────────────────────────────────┐│
+│  │                    CGROUP HOOKS                            ││
+│  │  ┌──────────────┐         ┌──────────────┐                 ││
+│  │  │ connect4     │         │  connect6    │                 ││
+│  │  │ (IPv4)       │         │  (IPv6)      │                 ││
+│  │  └──────┬───────┘         └──────┬───────┘                 ││
+│  │         │ get cookie + PID       │                         ││
+│  │         └───────────┬────────────┘                         ││
+│  │                     ▼ insert                               ││
+│  │              SOCKET_PID_MAP                                ││
+│  └────────────────────────────────────────────────────────────┘│
+│                                                                 │
+│  ┌────────────────────────────────────────────────────────────┐│
+│  │                  TC EGRESS HOOK                            ││
+│  │                                                            ││
+│  │    Packet ──▶ get cookie ──▶ lookup PID ──▶ lookup policy  ││
+│  │                                     │              │       ││
+│  │                                     ▼              ▼       ││
+│  │                              SOCKET_PID_MAP   POLICY_MAP   ││
+│  │                                                    │       ││
+│  │                     ┌──────────────────────────────┘       ││
+│  │                     ▼                                      ││
+│  │              ┌─────────────┐    ┌─────────────┐            ││
+│  │              │ No redirect │    │  Redirect   │            ││
+│  │              │ (pass thru) │    │ to ifindex  │            ││
+│  │              └──────┬──────┘    └──────┬──────┘            ││
+│  │                     ▼                  ▼                   ││
+│  └────────────────────────────────────────────────────────────┘│
+│                        │                  │                     │
+│                        ▼                  ▼                     │
+│               Physical Interface    WireGuard Interface         │
+│                   (eno1)                (wg0)                   │
+└─────────────────────────────────────────────────────────────────┘
+```,
+  caption: [Lockne system architecture showing the flow of data between userspace, eBPF maps, and kernel hooks.],
+)
+
+The key insight of this architecture is that the expensive operation (PID lookup) happens only once when a socket is created, not for every packet. The cgroup hooks capture the process context at connection time, storing it in a shared map. The TC hook then performs a simple O(1) hash lookup to retrieve this information for each packet.
+
 == Project Structure and Organization
 
 The implementation started with setting up a basic eBPF project using the Aya framework. The project structure follows the standard Aya template with three main crates, each serving a distinct purpose:

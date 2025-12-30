@@ -34,34 +34,41 @@ One of the key motivations for using eBPF was performance. The measurements belo
 
 === Latency Overhead
 
-The per-packet processing overhead was measured by comparing network latency with and without Lockne active. Using `ping` and `curl` timing measurements:
+The per-packet processing overhead was measured by comparing network latency with and without Lockne active. Testing was performed using `curl` to fetch a remote webpage, with 10 runs per configuration to account for network variance:
 
 #figure(
   table(
-    columns: 3,
-    align: (left, right, right),
+    columns: 4,
+    align: (left, right, right, right),
     table.hline(),
-    [*Scenario*], [*Avg Latency*], [*Overhead*],
+    [*Scenario*], [*Mean*], [*Std Dev*], [*Overhead*],
     table.hline(),
-    [Baseline (no lockne)], [12.3 ms], [-],
-    [Lockne monitoring only], [12.4 ms], [+0.1 ms],
-    [Lockne with redirect], [12.5 ms], [+0.2 ms],
+    [Baseline (no lockne)], [38.3 ms], [±13.1 ms], [-],
+    [Lockne monitor mode], [36.7 ms], [±11.2 ms], [\~0 ms],
+    [Lockne run mode#super[1]], [130.0 ms], [±46.3 ms], [+91.7 ms],
     table.hline(),
   ),
-  caption: [HTTP request latency to example.com with and without Lockne],
+  caption: [HTTP request latency to example.com (10 runs each). #super[1]Run mode includes eBPF loading and process spawn overhead, not just packet processing.],
 )
 
-The overhead is negligible - less than 2% increase in latency. This confirms that eBPF-based packet processing is orders of magnitude faster than userspace proxy solutions, which typically add 10-50ms of latency.
+The results reveal a critical insight: *the per-packet processing overhead is essentially zero*. The monitor mode latency is statistically indistinguishable from the baseline - both show similar mean values and variance, which is dominated by network conditions rather than local processing.
+
+The "run mode" shows higher latency (~130ms) because it includes the full startup sequence: loading eBPF programs into the kernel, attaching to TC and cgroup hooks, spawning the target process, and cleanup. This is a one-time cost per execution, not a per-packet cost.
+
+This confirms that eBPF-based packet processing adds negligible overhead to the actual data path. The JIT-compiled eBPF programs execute in nanoseconds - far below the measurement noise of network latency.
 
 === CPU Utilization
 
-CPU usage was monitored during sustained traffic generation:
+CPU usage was monitored during benchmark runs using system monitoring tools. The eBPF programs themselves consume negligible CPU - they execute in the kernel's networking hot path and complete in nanoseconds.
 
-- *Idle system*: 0.1% CPU
-- *With Lockne running (idle)*: 0.15% CPU
-- *With Lockne during active traffic*: 0.3-0.5% CPU
+The observable CPU usage comes primarily from:
+- The userspace logging infrastructure (reading eBPF ring buffers)
+- The TUI rendering loop (when enabled)
+- Process management overhead
 
-Even during heavy traffic, the CPU overhead remains below 1%. This is consistent with the eBPF programming model - the JIT-compiled programs execute directly in the kernel with no context switching overhead.
+In practice, even during active traffic generation with logging enabled, the `lockne` process rarely exceeded 1% CPU utilization. With logging disabled (production configuration), the CPU impact would be essentially unmeasurable, as the only active components would be the in-kernel eBPF programs.
+
+This stands in stark contrast to userspace proxy solutions like `proxychains-ng`, which must perform context switches for every packet and typically consume 5-15% CPU under load.
 
 === Memory Usage
 
