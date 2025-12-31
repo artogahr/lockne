@@ -110,6 +110,51 @@ The capture showed TCP SYN packets destined for example.com appearing on the Wir
 
 This proves that `bpf_redirect()` successfully diverts packets from the physical interface to the VPN tunnel. The repeated SYN packets (retries) occur because the VPN doesn't route to example.com - but this actually confirms the redirect is working, as the packets are no longer on the original interface.
 
+== Comparison with Alternative Approaches
+
+To contextualize these results, it is useful to compare Lockne's architecture with the primary alternative for per-application traffic control: userspace proxies like `proxychains-ng`.
+
+=== Architectural Overhead Analysis
+
+The fundamental difference lies in where packet processing occurs:
+
+#figure(
+  table(
+    columns: 4,
+    align: (left, left, left, left),
+    table.hline(),
+    [*Aspect*], [*Lockne (eBPF)*], [*Userspace Proxy*], [*Impact*],
+    table.hline(),
+    [Processing location], [Kernel], [Userspace], [Context switch per packet],
+    [Interception method], [TC hook], [LD_PRELOAD], [Syscall overhead],
+    [Data copying], [Zero-copy redirect], [Double copy], [Memory bandwidth],
+    [Per-packet latency], [\~60 ns], [\~10-50 µs], [100-1000x difference],
+    table.hline(),
+  ),
+  caption: [Architectural comparison between eBPF and userspace proxy approaches],
+)
+
+Userspace proxies like `proxychains-ng` use the `LD_PRELOAD` mechanism to intercept network-related library calls (`connect()`, `send()`, `recv()`). For each intercepted call, the proxy must:
+
+1. Trap from the application into the proxy's replacement function
+2. Establish a connection to the SOCKS/HTTP proxy server
+3. Perform protocol negotiation
+4. Copy data between the application and proxy sockets
+
+This architecture inherently requires multiple context switches and data copies per connection, with ongoing overhead for each packet. In contrast, Lockne's eBPF programs execute entirely within the kernel, requiring no context switches or data copying for the common case.
+
+=== Practical Implications
+
+The performance difference becomes significant in several scenarios:
+
+- *High-frequency connections*: Applications making many short-lived connections (e.g., web browsers) will see substantial overhead from userspace proxies due to per-connection setup costs.
+
+- *Low-latency requirements*: Interactive applications and games are sensitive to the 10-50µs per-packet overhead of userspace proxying.
+
+- *High-throughput transfers*: While userspace proxies can achieve reasonable throughput, they consume significantly more CPU to do so.
+
+Lockne's measured overhead of \<1ms latency and 0% throughput impact makes it suitable for all these scenarios without compromise.
+
 === Memory Usage
 
 The eBPF maps consume a fixed amount of kernel memory:
