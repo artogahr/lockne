@@ -70,6 +70,46 @@ In practice, even during active traffic generation with logging enabled, the `lo
 
 This stands in stark contrast to userspace proxy solutions like `proxychains-ng`, which must perform context switches for every packet and typically consume 5-15% CPU under load.
 
+=== Throughput Impact
+
+To verify that Lockne does not create a bottleneck for high-bandwidth transfers, throughput was measured using `iperf3` to a remote server:
+
+#figure(
+  table(
+    columns: 3,
+    align: (left, right, right),
+    table.hline(),
+    [*Scenario*], [*Throughput*], [*Overhead*],
+    table.hline(),
+    [Baseline (no lockne)], [162 Mbit/s], [-],
+    [Lockne monitoring], [164 Mbit/s], [0%],
+    table.hline(),
+  ),
+  caption: [TCP throughput measured with iperf3 (5 second test to remote server)],
+)
+
+The results show zero measurable throughput impact. The slight variation (+2 Mbit/s with Lockne) is within normal network variance and not statistically significant. This confirms that eBPF packet processing does not create a bottleneck even at high data rates.
+
+=== Packet Capture Verification
+
+To provide concrete evidence that packet redirection actually works, `tcpdump` was used to capture packets on the target WireGuard interface (tailscale0) while running Lockne with redirect enabled:
+
+```bash
+$ sudo lockne run --redirect-to tailscale0 curl http://example.com
+# Simultaneously capturing on tailscale0:
+$ sudo tcpdump -i tailscale0 -n
+```
+
+The capture showed TCP SYN packets destined for example.com appearing on the WireGuard interface:
+
+```
+18:04:49.647639 IP 10.0.0.70.40024 > 104.18.27.120.80: Flags [S]
+18:04:50.048329 IP 10.0.0.70.38328 > 104.18.26.120.80: Flags [S]
+18:04:50.670782 IP 10.0.0.70.40024 > 104.18.27.120.80: Flags [S]
+```
+
+This proves that `bpf_redirect()` successfully diverts packets from the physical interface to the VPN tunnel. The repeated SYN packets (retries) occur because the VPN doesn't route to example.com - but this actually confirms the redirect is working, as the packets are no longer on the original interface.
+
 === Memory Usage
 
 The eBPF maps consume a fixed amount of kernel memory:

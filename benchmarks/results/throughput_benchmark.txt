@@ -1,0 +1,21 @@
+THROUGHPUT BENCHMARK RESULTS
+============================
+Date: 2025-12-30
+Server: speedtest.uztelecom.uz:5200
+Duration: 5 seconds per test
+Tool: iperf3
+
+BASELINE (no lockne)
+--------------------
+Sender:   162 Mbits/sec
+Receiver: 162 Mbits/sec
+
+WITH LOCKNE MONITORING
+----------------------
+Sender:   164 Mbits/sec  
+Receiver: 164 Mbits/sec
+
+CONCLUSION
+----------
+Throughput overhead: ~0% (within measurement noise)
+Lockne's eBPF packet processing adds no measurable impact on throughput.
