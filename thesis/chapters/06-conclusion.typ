@@ -14,15 +14,38 @@ The primary contributions of this work are:
 
 4. *Practical tooling*: The implementation includes a user-friendly command-line interface with both monitoring and program-launch modes, making it accessible for real-world use.
 
-== Answer to the Research Question
+== Answers to Research Questions
 
-The thesis posed the question: can eBPF be used to implement efficient, per-application VPN routing that avoids the overhead of userspace proxies?
+The thesis posed three research questions in Chapter 2. The findings for each are:
 
-The answer is definitively yes. The prototype demonstrates that:
-- Process-to-packet mapping is achievable through socket cookies
-- Packet redirection works correctly via `bpf_redirect()`
-- Performance overhead is negligible compared to userspace alternatives
-- The solution can be packaged in a user-friendly way
+=== RQ1: Feasibility
+
+*Can eBPF be used to implement reliable, per-application network traffic routing on Linux?*
+
+Yes. The prototype demonstrates that the combination of cgroup socket hooks and TC classifiers provides a reliable mechanism for per-application traffic control. Socket cookies serve as stable identifiers that bridge the gap between connection establishment (where process context is available) and packet processing (where it normally isn't). The `bpf_redirect()` helper function successfully diverts packets to alternative interfaces, as verified by packet capture on the target WireGuard interface.
+
+=== RQ2: Performance
+
+*What is the performance overhead of an eBPF-based approach compared to userspace alternatives?*
+
+The measured overhead is negligible:
+- *Latency*: No statistically significant increase (38.3ms baseline vs 36.7ms with Lockne monitoring)
+- *Throughput*: Zero impact (162 Mbit/s baseline vs 164 Mbit/s with Lockne)
+- *CPU*: Less than 1% utilization even during active monitoring
+
+This confirms the theoretical advantage of in-kernel processing: by avoiding context switches and data copying, eBPF-based packet handling adds only nanoseconds of overhead per packet - below the measurement noise of network latency.
+
+=== RQ3: Practicality
+
+*Can such a system be made user-friendly enough for practical deployment?*
+
+The prototype demonstrates that a practical interface is achievable. The `lockne run` command provides an intuitive way to launch applications with traffic routing:
+
+```bash
+sudo lockne run --redirect-to wg0 firefox
+```
+
+This pattern, familiar from tools like `strace` and `proxychains`, requires no special configuration of the target application. The TUI mode provides real-time visibility into system behavior for debugging and monitoring.
 
 The approach fills a gap in the landscape of traffic control tools, offering the granularity of userspace proxies with the performance of in-kernel solutions.
 
