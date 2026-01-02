@@ -1,0 +1,10 @@
+{
+  "date": "2026-01-02",
+  "tests": {
+    "localhost_http_50_requests": {
+      "baseline": {"median_ms": 1.567, "mean_ms": 4.583, "max_ms": 148.511},
+      "lockne_monitor": {"median_ms": 1.529, "mean_ms": 1.601, "max_ms": 2.411}
+    }
+  },
+  "conclusion": "Zero measurable latency overhead"
+}
