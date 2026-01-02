@@ -190,33 +190,69 @@ To contextualize these results, it is useful to compare Lockne's architecture wi
 
 The fundamental difference lies in where packet processing occurs:
 
-#figure(
-  block(height: 120pt, width: 100%, breakable: false, {
-    let box-w = 80pt
-    let box-h = 30pt
-    
-    // Left Side: Userspace Proxy
-    place(top + left, text(weight: "bold", "Userspace Proxy"))
-    
-    place(top + left, dy: 20pt, rect(width: box-w, height: box-h, radius: 4pt, stroke: 1pt, align(center + horizon, "App")))
-    place(top + left, dy: 70pt, rect(width: box-w, height: box-h, radius: 4pt, stroke: 1pt, align(center + horizon, "Proxy Lib")))
-    place(top + left, dy: 45pt, dx: 35pt, line(start: (0pt, -25pt), end: (0pt, 25pt), stroke: (paint: gray, dash: "dashed"))) // Arrow
-    
-    // Middle: Boundary
-    place(top + left, dx: 130pt, dy: 10pt, line(start: (0pt, 0pt), end: (0pt, 100pt), stroke: (paint: black, dash: "dashed")))
-    place(top + left, dx: 135pt, dy: 50pt, text(size: 8pt, rotate(-90deg, "Context Switch")))
+// Helper for comparison diagram boxes
+#let cmp-box(content, fill: white, width: 90pt) = {
+  rect(
+    fill: fill,
+    stroke: 1pt + black,
+    radius: 4pt,
+    inset: 8pt,
+    width: width,
+    align(center + horizon, text(size: 9pt, content))
+  )
+}
 
-    // Right Side: Lockne (eBPF)
-    place(top + left, dx: 160pt, text(weight: "bold", "Lockne (eBPF)"))
-    
-    place(top + left, dx: 160pt, dy: 20pt, rect(width: box-w, height: box-h, radius: 4pt, stroke: 1pt, align(center + horizon, "App")))
-    place(top + left, dx: 160pt, dy: 70pt, rect(width: box-w, height: box-h, fill: rgb("#ccffcc"), radius: 4pt, stroke: 1pt, align(center + horizon, "Kernel eBPF")))
-    place(top + left, dx: 195pt, dy: 45pt, line(start: (0pt, -25pt), end: (0pt, 25pt), stroke: 1pt + black))
-    
-    // Notes
-    place(top + left, dx: 260pt, dy: 75pt, text(size: 8pt, style: "italic", "Zero-Copy Redirect"))
-  }),
-  caption: [Comparison of packet interception: Userspace Proxy (left) vs Lockne eBPF (right)],
+#figure(
+  block(width: 100%, breakable: false)[
+    #grid(
+      columns: (1fr, 40pt, 1fr),
+      gutter: 0pt,
+      
+      // Left: Userspace Proxy
+      align(center)[
+        #text(weight: "bold", size: 10pt)[Userspace Proxy]
+        #v(12pt)
+        #cmp-box([Application], fill: rgb("#e3f2fd"))
+        #v(4pt)
+        #text(size: 8pt, fill: gray)[↓ syscall]
+        #v(4pt)
+        #line(length: 90pt, stroke: (paint: gray, dash: "dashed"))
+        #text(size: 7pt, fill: gray)[ kernel boundary]
+        #v(4pt)
+        #text(size: 8pt, fill: gray)[↓ copy to userspace]
+        #v(4pt)
+        #cmp-box([Proxy Library], fill: rgb("#ffebee"))
+        #v(4pt)
+        #text(size: 8pt, fill: gray)[↓ copy back]
+        #v(4pt)
+        #cmp-box([Network Stack], fill: rgb("#eceff1"))
+      ],
+      
+      // Middle: vs
+      align(center + horizon)[
+        #text(size: 12pt, weight: "bold", fill: gray)[vs]
+      ],
+      
+      // Right: Lockne (eBPF)
+      align(center)[
+        #text(weight: "bold", size: 10pt)[Lockne (eBPF)]
+        #v(12pt)
+        #cmp-box([Application], fill: rgb("#e3f2fd"))
+        #v(4pt)
+        #text(size: 8pt, fill: gray)[↓ syscall]
+        #v(4pt)
+        #line(length: 90pt, stroke: (paint: gray, dash: "dashed"))
+        #text(size: 7pt, fill: gray)[ kernel boundary]
+        #v(4pt)
+        #cmp-box([eBPF Program], fill: rgb("#c8e6c9"))
+        #v(4pt)
+        #text(size: 8pt, fill: rgb("#2e7d32"))[↓ zero-copy redirect]
+        #v(4pt)
+        #cmp-box([WireGuard], fill: rgb("#c8e6c9"))
+      ],
+    )
+  ],
+  caption: [Comparison of packet interception: Userspace Proxy (left) vs Lockne eBPF (right). The eBPF approach avoids context switches and data copying.],
 )
 
 #figure(

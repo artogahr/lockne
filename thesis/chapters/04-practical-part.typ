@@ -47,60 +47,121 @@ The template-generated code was minimal - about 50 lines of eBPF code and 100 li
 
 Before diving into the implementation details, it is helpful to understand the overall architecture of Lockne. The system consists of two main domains: kernel-space eBPF programs and userspace control logic.
 
+// Helper function for drawing boxes with text
+#let arch-box(content, fill: white, width: auto, height: auto) = {
+  rect(
+    fill: fill,
+    stroke: 0.75pt + black,
+    radius: 3pt,
+    inset: 6pt,
+    width: width,
+    height: height,
+    align(center + horizon, text(size: 9pt, content))
+  )
+}
+
 #figure(
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         USERSPACE                               │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐      │
-│  │   lockne     │    │  Target App  │    │   Config/    │      │
-│  │   daemon     │───▶│  (e.g. curl) │    │   Policy     │      │
-│  └──────┬───────┘    └──────────────┘    └──────┬───────┘      │
-│         │ load/attach                           │ update       │
-│         ▼                                       ▼              │
-├─────────────────────────────────────────────────────────────────┤
-│                    eBPF MAPS (shared state)                     │
-│  ┌─────────────────────┐    ┌─────────────────────┐            │
-│  │   SOCKET_PID_MAP    │    │     POLICY_MAP      │            │
-│  │  cookie → PID       │    │   PID → ifindex     │            │
-│  └─────────────────────┘    └─────────────────────┘            │
-├─────────────────────────────────────────────────────────────────┤
-│                      KERNEL SPACE                               │
-│                                                                 │
-│  ┌────────────────────────────────────────────────────────────┐│
-│  │                    CGROUP HOOKS                            ││
-│  │  ┌──────────────┐         ┌──────────────┐                 ││
-│  │  │ connect4     │         │  connect6    │                 ││
-│  │  │ (IPv4)       │         │  (IPv6)      │                 ││
-│  │  └──────┬───────┘         └──────┬───────┘                 ││
-│  │         │ get cookie + PID       │                         ││
-│  │         └───────────┬────────────┘                         ││
-│  │                     ▼ insert                               ││
-│  │              SOCKET_PID_MAP                                ││
-│  └────────────────────────────────────────────────────────────┘│
-│                                                                 │
-│  ┌────────────────────────────────────────────────────────────┐│
-│  │                  TC EGRESS HOOK                            ││
-│  │                                                            ││
-│  │    Packet ──▶ get cookie ──▶ lookup PID ──▶ lookup policy  ││
-│  │                                     │              │       ││
-│  │                                     ▼              ▼       ││
-│  │                              SOCKET_PID_MAP   POLICY_MAP   ││
-│  │                                                    │       ││
-│  │                     ┌──────────────────────────────┘       ││
-│  │                     ▼                                      ││
-│  │              ┌─────────────┐    ┌─────────────┐            ││
-│  │              │ No redirect │    │  Redirect   │            ││
-│  │              │ (pass thru) │    │ to ifindex  │            ││
-│  │              └──────┬──────┘    └──────┬──────┘            ││
-│  │                     ▼                  ▼                   ││
-│  └────────────────────────────────────────────────────────────┘│
-│                        │                  │                     │
-│                        ▼                  ▼                     │
-│               Physical Interface    WireGuard Interface         │
-│                   (eno1)                (wg0)                   │
-└─────────────────────────────────────────────────────────────────┘
-```,
+  block(width: 100%, breakable: false)[
+    #set text(size: 9pt)
+    
+    // Main container
+    #rect(
+      width: 100%,
+      stroke: 1.5pt + black,
+      radius: 4pt,
+      inset: 0pt,
+    )[
+      // USERSPACE Section
+      #rect(width: 100%, fill: rgb("#e8f4e8"), stroke: (bottom: 0.75pt + black), inset: 8pt)[
+        #align(center, strong("USERSPACE"))
+      ]
+      
+      // Userspace content
+      #rect(width: 100%, stroke: (bottom: 0.75pt + black), inset: 12pt)[
+        #grid(
+          columns: (1fr, 1fr, 1fr),
+          gutter: 15pt,
+          align(center, arch-box([*lockne*\ daemon], fill: rgb("#fff3e0"), width: 85pt)),
+          align(center, arch-box([*Target App*\ (e.g. curl)], fill: rgb("#e3f2fd"), width: 85pt)),
+          align(center, arch-box([*Config &\ Policy*], fill: rgb("#fce4ec"), width: 85pt)),
+        )
+        #v(8pt)
+        #align(center, text(size: 8pt, style: "italic", "load/attach ↓                                              ↓ update"))
+      ]
+      
+      // eBPF MAPS Section
+      #rect(width: 100%, fill: rgb("#fff8e1"), stroke: (bottom: 0.75pt + black), inset: 10pt)[
+        #align(center, strong("eBPF MAPS (shared state)"))
+        #v(8pt)
+        #grid(
+          columns: (1fr, 1fr),
+          gutter: 20pt,
+          align(center, arch-box([*SOCKET_PID_MAP*\ cookie → PID], fill: white, width: 130pt)),
+          align(center, arch-box([*POLICY_MAP*\ PID → ifindex], fill: white, width: 130pt)),
+        )
+      ]
+      
+      // KERNEL SPACE Header
+      #rect(width: 100%, fill: rgb("#e8eaf6"), stroke: (bottom: 0.75pt + black), inset: 8pt)[
+        #align(center, strong("KERNEL SPACE"))
+      ]
+      
+      // Kernel content
+      #rect(width: 100%, inset: 12pt)[
+        // Cgroup hooks box
+        #rect(width: 100%, stroke: 0.75pt + gray, radius: 3pt, inset: 10pt, fill: rgb("#fafafa"))[
+          #align(center, text(weight: "bold", size: 9pt, "CGROUP HOOKS"))
+          #v(8pt)
+          #grid(
+            columns: (1fr, 1fr),
+            gutter: 20pt,
+            align(center, arch-box([*connect4*\ (IPv4)], fill: rgb("#e8f5e9"), width: 90pt)),
+            align(center, arch-box([*connect6*\ (IPv6)], fill: rgb("#e8f5e9"), width: 90pt)),
+          )
+          #v(6pt)
+          #align(center, text(size: 8pt, "↓ get cookie + PID"))
+          #v(4pt)
+          #align(center, text(size: 8pt, style: "italic", "insert → SOCKET_PID_MAP"))
+        ]
+        
+        #v(10pt)
+        
+        // TC Egress hook box
+        #rect(width: 100%, stroke: 0.75pt + gray, radius: 3pt, inset: 10pt, fill: rgb("#fafafa"))[
+          #align(center, text(weight: "bold", size: 9pt, "TC EGRESS HOOK"))
+          #v(8pt)
+          
+          // Flow diagram
+          #align(center)[
+            #text(size: 8pt)[Packet → get cookie → lookup PID → lookup policy]
+          ]
+          #v(4pt)
+          #align(center, text(size: 7pt, fill: gray, "(SOCKET_PID_MAP)        (POLICY_MAP)"))
+          #v(8pt)
+          
+          // Decision boxes
+          #grid(
+            columns: (1fr, 1fr),
+            gutter: 30pt,
+            align(center, arch-box([*No redirect*\ (pass through)], fill: rgb("#ffebee"), width: 100pt)),
+            align(center, arch-box([*Redirect*\ to ifindex], fill: rgb("#e3f2fd"), width: 100pt)),
+          )
+          #v(6pt)
+          #align(center, text(size: 8pt, "↓                                           ↓"))
+        ]
+        
+        #v(10pt)
+        
+        // Network interfaces
+        #grid(
+          columns: (1fr, 1fr),
+          gutter: 30pt,
+          align(center, arch-box([*Physical Interface*\ (eno1)], fill: rgb("#eceff1"), width: 120pt)),
+          align(center, arch-box([*WireGuard Interface*\ (wg0)], fill: rgb("#c8e6c9"), width: 120pt)),
+        )
+      ]
+    ]
+  ],
   caption: [Lockne system architecture showing the flow of data between userspace, eBPF maps, and kernel hooks.],
 )
 

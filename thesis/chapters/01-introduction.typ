@@ -34,24 +34,62 @@ Lockne proposes a solution that avoids the performance penalties of existing use
 
 The goal is to create a performant, user-friendly, and dynamic mechanism for fine-grained network control on modern Linux systems.
 
+// Helper for intro diagram boxes
+#let intro-box(content, fill: white, width: 75pt, radius: 4pt) = {
+  rect(
+    fill: fill,
+    stroke: 1pt + black,
+    radius: radius,
+    inset: 8pt,
+    width: width,
+    align(center + horizon, text(size: 9pt, content))
+  )
+}
+
 #figure(
-  block(height: 100pt, width: 100%, breakable: false, {
-    // Boxes
-    place(top + left, dx: 10pt, dy: 30pt, rect(width: 60pt, height: 40pt, radius: 20pt, stroke: 1pt, align(center + horizon, "User")))
-    place(top + left, dx: 100pt, dy: 30pt, rect(width: 80pt, height: 40pt, radius: 4pt, fill: rgb("#f5a623").lighten(80%), stroke: 1pt, align(center + horizon, "Lockne\n(Rust)")))
-    place(top + left, dx: 210pt, dy: 30pt, rect(width: 80pt, height: 40pt, radius: 4pt, fill: rgb("#4a90e2").lighten(80%), stroke: 1pt, align(center + horizon, "Kernel\n(eBPF)")))
-    
-    // Interfaces
-    place(top + left, dx: 330pt, dy: 10pt, rect(width: 60pt, height: 30pt, radius: 4pt, fill: gray.lighten(80%), stroke: 1pt, align(center + horizon, "eth0")))
-    place(top + left, dx: 330pt, dy: 60pt, rect(width: 60pt, height: 30pt, radius: 4pt, fill: rgb("#50e3c2").lighten(80%), stroke: 1pt, align(center + horizon, "wg0")))
-    
-    // Lines
-    place(top + left, dx: 70pt, dy: 50pt, line(length: 30pt, stroke: 1pt)) // User -> Rust
-    place(top + left, dx: 180pt, dy: 50pt, line(length: 30pt, stroke: 1pt)) // Rust -> Kernel
-    place(top + left, dx: 290pt, dy: 45pt, line(end: (40pt, -20pt), stroke: 1pt)) // Kernel -> eth0
-    place(top + left, dx: 290pt, dy: 55pt, line(end: (40pt, 20pt), stroke: 1pt)) // Kernel -> wg0
-  }),
-  caption: [High-level architecture of the Lockne system],
+  block(width: 100%, breakable: false)[
+    #align(center)[
+      #grid(
+        columns: (auto, 25pt, auto, 25pt, auto, 30pt, auto),
+        align: center + horizon,
+        gutter: 0pt,
+        
+        // User
+        intro-box([*User*], fill: rgb("#eceff1"), radius: 20pt),
+        
+        // Arrow
+        [→],
+        
+        // Lockne
+        intro-box([*Lockne*\ #text(size: 8pt)[(Rust)]], fill: rgb("#fff3e0")),
+        
+        // Arrow
+        [→],
+        
+        // Kernel
+        intro-box([*Kernel*\ #text(size: 8pt)[(eBPF)]], fill: rgb("#e3f2fd")),
+        
+        // Arrows to interfaces
+        grid(
+          columns: 1,
+          rows: 2,
+          gutter: 4pt,
+          align(left)[↗],
+          align(left)[↘],
+        ),
+        
+        // Network interfaces
+        grid(
+          columns: 1,
+          rows: 2,
+          gutter: 8pt,
+          intro-box([*eth0*\ #text(size: 7pt)[direct]], fill: rgb("#eceff1"), width: 65pt),
+          intro-box([*wg0*\ #text(size: 7pt)[VPN]], fill: rgb("#c8e6c9"), width: 65pt),
+        ),
+      )
+    ]
+  ],
+  caption: [High-level architecture of the Lockne system. User launches applications through Lockne, which uses eBPF in the kernel to selectively route traffic to either the physical interface or the VPN tunnel.],
 )
 
 Specifically, Lockne enables users to:
