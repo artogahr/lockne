@@ -112,12 +112,11 @@ async fn ui_loop(
         })?;
 
         // Check for 'q' key to quit
-        if event::poll(Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                if key.code == KeyCode::Char('q') {
-                    return Ok(());
-                }
-            }
+        if event::poll(Duration::from_millis(100))?
+            && let Event::Key(key) = event::read()?
+            && key.code == KeyCode::Char('q')
+        {
+            return Ok(());
         }
     }
 }
