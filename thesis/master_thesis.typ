@@ -60,7 +60,7 @@
   ]
 
   #v(2cm)
-  #text(14pt)[Artoghrul Gahrammanli, BSc.]
+  #text(14pt)[Artoghrul Gahramanli, BSc.]
 
   #v(1fr)
   #text(12pt)[© 2026 CZU Prague] // Put your expected year of submission
@@ -139,14 +139,13 @@
 // You will need help from a translation tool or native speaker.
 // ===============================================
 #set page(numbering: none)
-#v(5em)
-#align(left)[
-  #text(16pt, weight: "bold")[Abstrakt]
-  #v(2em)
-  // TODO: Translate the English abstract here. Use DeepL or Google Translate for a first pass.
-  Tato práce představuje "Lockne", nový systém pro dynamické směrování síťového provozu na základě jednotlivých aplikací v operačních systémech Linux. Stávající řešení pro řízení provozu trpí výkonnostní režií způsobenou provozem v uživatelském prostoru nebo postrádají uživatelskou přívětivost kvůli spoléhání na složitou kontejnerizaci. Lockne tento nedostatek řeší využitím frameworku eBPF v jádře k efektivnímu přesměrování paketů на nízké úrovni, ve spojení s robustní řídicí rovinou napsanou v jazyce Rust. Systém umožňuje uživatelům definovat pravidla, která mapují konkrétní aplikace na určené VPN tunely WireGuard, zatímco ostatní aplikace si zachovávají přímé připojení k internetu. Práce podrobně popisuje architekturu Lockne, od programů eBPF připojených k síťovým hookům až po démona v uživatelském prostoru, který spravuje pravidla a rozhraní. Práce vrcholí hodnocením výkonu, které srovnává latenci a využití CPU systému Lockne s tradičními nástroji založenými na proxy, a demonstruje tak významné výhody moderního přístupu k jemně zrnitému řízení sítě v jádře.
-  #v(3em)
-  #text(weight: "bold")[Klíčová slova:] eBPF, Rust, VPN, WireGuard, programování jádra, síťová bezpečnost, směrování provozu, izolace procesů, systémové programování, sítě.
+  #v(5em)
+  #align(left)[
+    #text(16pt, weight: "bold")[Abstrakt]
+    #v(2em)
+    // TODO: Translate the English abstract here. Use DeepL or Google Translate for a first pass.
+    Tato práce představuje "Lockne", nový systém pro dynamické směrování síťového provozu na základě jednotlivých aplikací v operačních systémech Linux. Stávající řešení pro řízení provozu trpí výkonnostní režií způsobenou provozem v uživatelském prostoru nebo postrádají uživatelskou přívětivost kvůli spoléhání na složitou kontejnerizaci. Lockne tento nedostatek řeší využitím frameworku eBPF v jádře k efektivnímu přesměrování paketů na nízké úrovni, ve spojení s robustní řídicí rovinou napsanou v jazyce Rust. Systém umožňuje uživatelům definovat pravidla, která mapují konkrétní aplikace na určené VPN tunely WireGuard, zatímco ostatní aplikace si zachovávají přímé připojení k internetu. Práce podrobně popisuje architekturu Lockne, od programů eBPF připojených k síťovým hookům až po démona v uživatelském prostoru, který spravuje pravidla a rozhraní. Práce vrcholí hodnocením výkonu, které srovnává latenci a využití CPU systému Lockne s tradičními nástroji založenými na proxy, a demonstruje tak významné výhody moderního přístupu k jemně zrnitému řízení sítě v jádře.
+    #v(3em)  #text(weight: "bold")[Klíčová slova:] eBPF, Rust, VPN, WireGuard, programování jádra, síťová bezpečnost, směrování provozu, izolace procesů, systémové programování, sítě.
 ]
 #pagebreak()
 
