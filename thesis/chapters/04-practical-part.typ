@@ -196,12 +196,19 @@ The crate includes a `build.rs` script that automatically compiles the eBPF prog
 
 This small but crucial crate defines types that are shared between the kernel and userspace. Because both the eBPF programs and the userspace loader need to agree on the format of data structures (especially those stored in eBPF maps), having a common crate ensures they stay in sync.
 
-Currently it defines:
+It defines:
 ```rust
 pub type Pid = u32;
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+pub struct PolicyEntry {
+    pub ifindex: u32,  // Interface index to redirect to
+    pub flags: u32,    // Reserved for future use
+}
 ```
 
-In the future, this crate will include policy structures, statistics types, and other shared data definitions.
+The `Pid` type alias ensures consistent 32-bit process ID representation. The `PolicyEntry` structure stores redirect policies in the eBPF map, with `#[repr(C)]` ensuring the memory layout matches between kernel and userspace components.
 
 == Implementation Timeline: From Zero to Process Tracking
 
@@ -294,12 +301,13 @@ This phase validated that we could extract the socket cookie, but all packets st
 
 Before implementing the cgroup program, we needed a place to store the socket-to-PID mappings. This required careful coordination between the kernel and userspace code.
 
-*Defining Shared Types:* To ensure both sides agree on data formats, a common type was defined in `lockne-common/src/lib.rs`:
+*Defining Shared Types:* To ensure both sides agree on data formats, common types were defined in `lockne-common/src/lib.rs`. The `Pid` type alias ensures consistent 32-bit representation, while `PolicyEntry` stores redirect targets:
 ```rust
 pub type Pid = u32;
+pub struct PolicyEntry { pub ifindex: u32, pub flags: u32 }
 ```
 
-This simple type alias ensures that when the eBPF code stores a PID and the userspace code reads it, they're using the same 32-bit representation. This seems trivial, but mismatches here cause subtle bugs that are hard to debug.
+This seems trivial, but mismatches in memory layout cause subtle bugs that are hard to debug. The `#[repr(C)]` attribute on `PolicyEntry` ensures the memory layout is predictable across both kernel and userspace.
 
 *Creating the Map:* The eBPF map definition uses Aya's procedural macros:
 ```rust
