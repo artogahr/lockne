@@ -393,14 +393,6 @@ The various approaches to per-application traffic control each present a differe
 
 This analysis highlights the specific gap that Lockne is designed to fill. Traditional userspace proxies sacrifice performance and transparency for granularity. Enterprise solutions and containerization, while performant, introduce significant resource and administrative overhead and lack the dynamic, user-centric control needed for desktop use cases. Lockne's architecture aims to provide the high granularity of userspace proxies with the high performance and transparency of in-kernel solutions, all while maintaining low resource usage and low complexity for the end-user.
 
-=== Network Namespaces: The Heavyweight Solution
-
-At the other end of the spectrum is the kernel's native isolation primitive: network namespaces. A network namespace provides a completely separate network stack for processes, including independent network interfaces, routing tables, and firewall rules. This is the fundamental technology underlying container platforms like Docker.
-
-While network namespaces offer complete and reliable traffic control, they are fundamentally ill-suited for dynamic, per-application traffic control in desktop environments. The administrative complexity is substantial, requiring root privileges for namespace creation and management. Each namespace requires manual setup of network interfaces, routing rules, and connectivity policies.
-
-Applications running in separate namespaces cannot easily communicate with services in the root namespace, breaking integration with desktop environments and shared services. The isolation provided by network namespaces is often excessive for simple application routing needs, creating hard boundaries that prevent the kind of selective, transparent routing that desktop users expect.
-
 === System-Wide VPN Solutions: Lack of Granularity
 
 Traditional VPN clients route all system traffic through encrypted tunnels without application-level discrimination. While these solutions excel in providing comprehensive traffic protection, their all-or-nothing approach creates significant usability challenges.
