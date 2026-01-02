@@ -157,7 +157,7 @@
 // ===============================================
 #set page(numbering: "I") // Roman numerals for front matter
 #outline(
-  title: [Table of content],
+  title: [Table of Contents],
   depth: 3,
   indent: auto,
 )
