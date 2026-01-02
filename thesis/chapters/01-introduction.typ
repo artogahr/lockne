@@ -32,7 +32,29 @@ This thesis directly tackles this problem by designing and implementing "Lockne"
 
 Lockne proposes a solution that avoids the performance penalties of existing userspace tools and the complexity of containerization. It leverages the extended Berkeley Packet Filter (eBPF) framework for efficient, kernel-level packet filtering, combined with a modern control plane written in the Rust programming language. The key innovation is using eBPF's ability to execute custom logic directly within the kernel's networking stack, eliminating the context-switching overhead that plagues userspace solutions.
 
-The goal is to create a performant, user-friendly, and dynamic mechanism for fine-grained network control on modern Linux systems. Specifically, Lockne enables users to:
+The goal is to create a performant, user-friendly, and dynamic mechanism for fine-grained network control on modern Linux systems.
+
+#figure(
+  block(height: 100pt, width: 100%, breakable: false, {
+    // Boxes
+    place(top + left, dx: 10pt, dy: 30pt, rect(width: 60pt, height: 40pt, radius: 20pt, stroke: 1pt, align(center + horizon, "User")))
+    place(top + left, dx: 100pt, dy: 30pt, rect(width: 80pt, height: 40pt, radius: 4pt, fill: rgb("#f5a623").lighten(80%), stroke: 1pt, align(center + horizon, "Lockne\n(Rust)")))
+    place(top + left, dx: 210pt, dy: 30pt, rect(width: 80pt, height: 40pt, radius: 4pt, fill: rgb("#4a90e2").lighten(80%), stroke: 1pt, align(center + horizon, "Kernel\n(eBPF)")))
+    
+    // Interfaces
+    place(top + left, dx: 330pt, dy: 10pt, rect(width: 60pt, height: 30pt, radius: 4pt, fill: gray.lighten(80%), stroke: 1pt, align(center + horizon, "eth0")))
+    place(top + left, dx: 330pt, dy: 60pt, rect(width: 60pt, height: 30pt, radius: 4pt, fill: rgb("#50e3c2").lighten(80%), stroke: 1pt, align(center + horizon, "wg0")))
+    
+    // Lines
+    place(top + left, dx: 70pt, dy: 50pt, line(length: 30pt, stroke: 1pt)) // User -> Rust
+    place(top + left, dx: 180pt, dy: 50pt, line(length: 30pt, stroke: 1pt)) // Rust -> Kernel
+    place(top + left, dx: 290pt, dy: 45pt, line(end: (40pt, -20pt), stroke: 1pt)) // Kernel -> eth0
+    place(top + left, dx: 290pt, dy: 55pt, line(end: (40pt, 20pt), stroke: 1pt)) // Kernel -> wg0
+  }),
+  caption: [High-level architecture of the Lockne system],
+)
+
+Specifically, Lockne enables users to:
 
 1. Launch an application with its traffic automatically routed through a VPN
 2. Monitor which processes are generating network traffic

@@ -23,7 +23,7 @@
 
         rust-toolchain = fenix.packages.${system}.fromToolchainFile {
           dir = ./code;
-          sha256 = "sha256-tqagmXrHoZA9Zmu2Br6n3MzvXaLkuPzKPS3NIVdNQVQ=";
+          sha256 = "sha256-6TyaSUC4DKEco87OQSScp+HB/Z6B7qMBMHHIoohxYhI=";
         };
 
         # Common build dependencies

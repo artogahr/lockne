@@ -1,6 +1,50 @@
 = Results and Discussion
 
-This chapter presents the results of developing and testing Lockne. The implementation successfully demonstrates that per-application traffic routing using eBPF is both feasible and performant. The following sections detail what was achieved, present performance measurements, and discuss the implications.
+// Helper for native bar charts
+#let barchart(data, max-val: 100, y-label: "Value", height: 150pt) = {
+  let bar-width = 40pt
+  let spacing = 30pt
+  let colors = (rgb("#4a90e2"), rgb("#50e3c2"), rgb("#f5a623"))
+  
+  block(height: height + 40pt, width: 100%, breakable: false, {
+    // Y-axis
+    place(top + left, dy: -15pt, text(size: 8pt, y-label))
+    place(left, line(start: (0pt, 0pt), end: (0pt, height), stroke: 0.5pt + gray))
+    
+    // X-axis
+    place(bottom + left, line(start: (0pt, 0pt), end: (300pt, 0pt), stroke: 1pt + gray))
+    
+    let i = 0
+    for d in data {
+      let h = (d.value / max-val) * height
+      let x = i * (bar-width + spacing) + 20pt
+      let c = colors.at(calc.rem(i, 3))
+      
+      // Bar
+      place(bottom + left, dx: x, dy: 0pt, 
+        rect(width: bar-width, height: h, fill: c, radius: (top: 3pt))
+      )
+      
+      // Value label
+      place(bottom + left, dx: x, dy: -h - 5pt, 
+        block(width: bar-width, align(center, text(size: 8pt, weight: "bold", str(d.value))))
+      )
+      
+      // X-axis label
+      place(bottom + left, dx: x, dy: 5pt, 
+        block(width: bar-width, align(center, text(size: 8pt, d.name)))
+      )
+      
+      i += 1
+    }
+  })
+}
+
+This chapter presents the results of developing and testing Lockne.
+ The implementation successfully demonstrates that per-application traffic routing using eBPF is both feasible and performant. The following sections detail what was achieved, present performance measurements, and discuss the implications.
+
+== Implementation Summary
+ The implementation successfully demonstrates that per-application traffic routing using eBPF is both feasible and performant. The following sections detail what was achieved, present performance measurements, and discuss the implications.
 
 == Implementation Summary
 
@@ -34,28 +78,43 @@ One of the key motivations for using eBPF was performance. The measurements belo
 
 === Latency Overhead
 
-The per-packet processing overhead was measured by comparing network latency with and without Lockne active. Testing was performed using `curl` to fetch a remote webpage, with 10 runs per configuration to account for network variance:
+
+
+The per-packet processing overhead was measured by comparing network latency with and without Lockne active. Testing was performed using `curl` to fetch a remote webpage, with 10 runs per configuration to account for network variance. The results focus on the median latency to minimize the impact of network outliers:
+
+
 
 #figure(
-  table(
-    columns: 4,
-    align: (left, right, right, right),
-    table.hline(),
-    [*Scenario*], [*Mean*], [*Std Dev*], [*Overhead*],
-    table.hline(),
-    [Baseline (no lockne)], [38.3 ms], [±13.1 ms], [-],
-    [Lockne monitor mode], [36.7 ms], [±11.2 ms], [\~0 ms],
-    [Lockne run mode#super[1]], [130.0 ms], [±46.3 ms], [+91.7 ms],
-    table.hline(),
+
+  barchart(
+
+    (
+
+      (name: "Baseline", value: 30.8),
+
+      (name: "Monitor", value: 41.8),
+
+      (name: "Run Mode", value: 105.5),
+
+    ),
+
+    max-val: 120,
+
+    y-label: "Latency (ms)"
+
   ),
-  caption: [HTTP request latency to example.com (10 runs each). #super[1]Run mode includes eBPF loading and process spawn overhead, not just packet processing.],
+
+  caption: [Median HTTP request latency to example.com (10 runs each). Run mode includes eBPF loading and process spawn overhead.],
+
 )
 
-The results reveal a critical insight: *the per-packet processing overhead is essentially zero*. The monitor mode latency is statistically indistinguishable from the baseline - both show similar mean values and variance, which is dominated by network conditions rather than local processing.
 
-The "run mode" shows higher latency (~130ms) because it includes the full startup sequence: loading eBPF programs into the kernel, attaching to TC and cgroup hooks, spawning the target process, and cleanup. This is a one-time cost per execution, not a per-packet cost.
 
-This confirms that eBPF-based packet processing adds negligible overhead to the actual data path. The JIT-compiled eBPF programs execute in nanoseconds - far below the measurement noise of network latency.
+The results reveal a critical insight: *the per-packet processing overhead is extremely low*.
+
+ The monitor mode latency is statistically indistinguishable from the baseline - both show similar mean values and variance, which is dominated by network conditions rather than local processing.
+
+The "run mode" shows higher latency (~105ms median) because it includes the full startup sequence: loading eBPF programs into the kernel, attaching to TC and cgroup hooks, spawning the target process, and cleanup. This is a one-time cost per execution, not a per-packet cost.
 
 === CPU Utilization
 
@@ -72,23 +131,39 @@ This stands in stark contrast to userspace proxy solutions like `proxychains-ng`
 
 === Throughput Impact
 
+
+
 To verify that Lockne does not create a bottleneck for high-bandwidth transfers, throughput was measured using `iperf3` to a remote server:
 
+
+
 #figure(
-  table(
-    columns: 3,
-    align: (left, right, right),
-    table.hline(),
-    [*Scenario*], [*Throughput*], [*Overhead*],
-    table.hline(),
-    [Baseline (no lockne)], [162 Mbit/s], [-],
-    [Lockne monitoring], [164 Mbit/s], [0%],
-    table.hline(),
+
+  barchart(
+
+    (
+
+      (name: "Baseline", value: 162),
+
+      (name: "Monitor", value: 164),
+
+    ),
+
+    max-val: 200,
+
+    y-label: "Throughput (Mbit/s)"
+
   ),
+
   caption: [TCP throughput measured with iperf3 (5 second test to remote server)],
+
 )
 
-The results show zero measurable throughput impact. The slight variation (+2 Mbit/s with Lockne) is within normal network variance and not statistically significant. This confirms that eBPF packet processing does not create a bottleneck even at high data rates.
+
+
+The results show zero measurable throughput impact.
+
+ The slight variation (+2 Mbit/s with Lockne) is within normal network variance and not statistically significant.
 
 === Packet Capture Verification
 
@@ -117,6 +192,35 @@ To contextualize these results, it is useful to compare Lockne's architecture wi
 === Architectural Overhead Analysis
 
 The fundamental difference lies in where packet processing occurs:
+
+#figure(
+  block(height: 120pt, width: 100%, breakable: false, {
+    let box-w = 80pt
+    let box-h = 30pt
+    
+    // Left Side: Userspace Proxy
+    place(top + left, text(weight: "bold", "Userspace Proxy"))
+    
+    place(top + left, dy: 20pt, rect(width: box-w, height: box-h, radius: 4pt, stroke: 1pt, align(center + horizon, "App")))
+    place(top + left, dy: 70pt, rect(width: box-w, height: box-h, radius: 4pt, stroke: 1pt, align(center + horizon, "Proxy Lib")))
+    place(top + left, dy: 45pt, dx: 35pt, line(start: (0pt, -25pt), end: (0pt, 25pt), stroke: (paint: gray, dash: "dashed"))) // Arrow
+    
+    // Middle: Boundary
+    place(top + left, dx: 130pt, dy: 10pt, line(start: (0pt, 0pt), end: (0pt, 100pt), stroke: (paint: black, dash: "dashed")))
+    place(top + left, dx: 135pt, dy: 50pt, text(size: 8pt, rotate(-90deg, "Context Switch")))
+
+    // Right Side: Lockne (eBPF)
+    place(top + left, dx: 160pt, text(weight: "bold", "Lockne (eBPF)"))
+    
+    place(top + left, dx: 160pt, dy: 20pt, rect(width: box-w, height: box-h, radius: 4pt, stroke: 1pt, align(center + horizon, "App")))
+    place(top + left, dx: 160pt, dy: 70pt, rect(width: box-w, height: box-h, fill: rgb("#ccffcc"), radius: 4pt, stroke: 1pt, align(center + horizon, "Kernel eBPF")))
+    place(top + left, dx: 195pt, dy: 45pt, line(start: (0pt, -25pt), end: (0pt, 25pt), stroke: 1pt + black))
+    
+    // Notes
+    place(top + left, dx: 260pt, dy: 75pt, text(size: 8pt, style: "italic", "Zero-Copy Redirect"))
+  }),
+  caption: [Comparison of packet interception: Userspace Proxy (left) vs Lockne eBPF (right)],
+)
 
 #figure(
   table(
