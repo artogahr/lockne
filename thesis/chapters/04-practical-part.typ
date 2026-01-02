@@ -16,7 +16,7 @@ This incremental approach meant the system was always in a working state, and bu
 
 === Initial Project Setup with Aya
 
-Rather than building the project structure from scratch, the Aya framework provides cargo templates that generate a working skeleton. This is a huge time-saver and ensures the project follows best practices from the start.
+Rather than building the project structure from scratch, the Aya framework provides cargo templates that generate a working skeleton @ayaRustEBPFLibrary2024. This is a huge time-saver and ensures the project follows best practices from the start.
 
 The initial setup process was:
 ```bash
@@ -794,7 +794,7 @@ While the current implementation successfully demonstrates process-to-packet map
 
 === IPv6 Support
 
-Right now, only IPv4 connections are tracked. The cgroup program only attaches to `connect4` hooks. To support IPv6, we'd need to add a similar program for `connect6` and update the TC classifier to handle IPv6 packets as well. This is straightforward but wasn't prioritized for the initial proof of concept.
+Lockne provides dual-stack support for both IPv4 and IPv6 connections. The cgroup tracking programs are attached to both `connect4` and `connect6` hooks, ensuring that socket-to-PID mappings are captured regardless of the IP version. Similarly, the TC classifier parses both IPv4 and IPv6 headers to extract socket cookies and apply routing policies. This ensures comprehensive coverage of modern network traffic.
 
 === Map Cleanup
 
@@ -934,7 +934,7 @@ The `run` command uses `trailing_var_arg = true` to capture the program name and
 
 === Terminal User Interface with Ratatui
 
-To improve usability, a terminal user interface (TUI) was added using the Ratatui library. Ratatui is a Rust framework for building text-based UIs that run in the terminal. It provides widgets like boxes, lists, and progress bars, making it possible to create dashboard-like interfaces without needing a graphical environment.
+To improve usability, a terminal user interface (TUI) was added using the Ratatui library @ratatui. Ratatui is a Rust framework for building text-based UIs that run in the terminal, providing a rich set of widgets for creating interactive dashboards.
 
 The TUI mode can be enabled with the `--tui` flag in either mode:
 ```bash

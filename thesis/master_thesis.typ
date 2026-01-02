@@ -124,10 +124,10 @@
 #set page(numbering: none)
 #v(5em)
 #align(left)[
-  #text(16pt, weight: "bold")[Abstract]
-  #v(2em)
-  // TODO: Write a 15-line summary here after you have some results.
-  This thesis presents "Lockne", a novel system for dynamic, per-application network traffic routing on Linux systems. Existing solutions for traffic control suffer from performance overhead by operating in userspace or lack user-friendliness by relying on complex containerization. Lockne addresses this gap by leveraging the kernel's eBPF framework to perform efficient packet redirection at a low level, coupled with a robust control plane written in Rust. The system allows users to define policies that map specific applications to designated WireGuard VPN tunnels, while other applications maintain a direct internet connection. This work details the architecture of Lockne, from the eBPF programs attached to network hooks to the userspace daemon that manages policies and interfaces. The thesis culminates in a performance evaluation, benchmarking Lockne's latency and CPU utilization against traditional proxy-based tools, demonstrating the significant advantages of a modern, in-kernel approach to fine-grained network control.
+    #text(16pt, weight: "bold")[Abstract]
+    #v(2em)
+    This thesis presents "Lockne", a novel system for dynamic, per-application network traffic routing on Linux systems.
+   Existing solutions for traffic control suffer from performance overhead by operating in userspace or lack user-friendliness by relying on complex containerization. Lockne addresses this gap by leveraging the kernel's eBPF framework to perform efficient packet redirection at a low level, coupled with a robust control plane written in Rust. The system allows users to define policies that map specific applications to designated WireGuard VPN tunnels, while other applications maintain a direct internet connection. This work details the architecture of Lockne, from the eBPF programs attached to network hooks to the userspace daemon that manages policies and interfaces. The thesis culminates in a performance evaluation, benchmarking Lockne's latency and CPU utilization against traditional proxy-based tools, demonstrating the significant advantages of a modern, in-kernel approach to fine-grained network control.
   #v(3em)
   #text(weight: "bold")[Keywords:] eBPF, Rust, VPN, WireGuard, kernel programming, network security, traffic routing, process isolation, systems programming, networking.
 ]
@@ -143,7 +143,6 @@
   #align(left)[
     #text(16pt, weight: "bold")[Abstrakt]
     #v(2em)
-    // TODO: Translate the English abstract here. Use DeepL or Google Translate for a first pass.
     Tato práce představuje "Lockne", nový systém pro dynamické směrování síťového provozu na základě jednotlivých aplikací v operačních systémech Linux. Stávající řešení pro řízení provozu trpí výkonnostní režií způsobenou provozem v uživatelském prostoru nebo postrádají uživatelskou přívětivost kvůli spoléhání na složitou kontejnerizaci. Lockne tento nedostatek řeší využitím frameworku eBPF v jádře k efektivnímu přesměrování paketů na nízké úrovni, ve spojení s robustní řídicí rovinou napsanou v jazyce Rust. Systém umožňuje uživatelům definovat pravidla, která mapují konkrétní aplikace na určené VPN tunely WireGuard, zatímco ostatní aplikace si zachovávají přímé připojení k internetu. Práce podrobně popisuje architekturu Lockne, od programů eBPF připojených k síťovým hookům až po démona v uživatelském prostoru, který spravuje pravidla a rozhraní. Práce vrcholí hodnocením výkonu, které srovnává latenci a využití CPU systému Lockne s tradičními nástroji založenými na proxy, a demonstruje tak významné výhody moderního přístupu k jemně zrnitému řízení sítě v jádře.
     #v(3em)  #text(weight: "bold")[Klíčová slova:] eBPF, Rust, VPN, WireGuard, programování jádra, síťová bezpečnost, směrování provozu, izolace procesů, systémové programování, sítě.
 ]

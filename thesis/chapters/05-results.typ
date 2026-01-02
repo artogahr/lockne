@@ -103,8 +103,6 @@ The "Run Mode" shows higher latency (~95ms) because it includes one-time startup
 
 This startup overhead is acceptable for the intended use case, where users launch applications that run for extended periods. For a web browser session lasting hours, a 95ms startup delay is imperceptible.
 
-The "run mode" shows higher latency (~105ms median) because it includes the full startup sequence: loading eBPF programs into the kernel, attaching to TC and cgroup hooks, spawning the target process, and cleanup. This is a one-time cost per execution, not a per-packet cost.
-
 === CPU Utilization
 
 CPU usage was measured by monitoring the `lockne` process while generating sustained network load (200 HTTP requests). The measurements were sampled every second over a 10-second period.

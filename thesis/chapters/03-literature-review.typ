@@ -4,7 +4,7 @@ Before designing and building Lockne, it is essential to understand the technolo
 
 == The Kernel's New Superpower: An Overview of eBPF
 
-The core mechanism that makes Lockne possible is the extended Berkeley Packet Filter (eBPF). To understand its importance, one must see it not merely as a tool, but as one of the most significant architectural shifts in the Linux kernel in the last decade. It represents a move away from a monolithic kernel with a fixed set of features toward a more programmable and extensible operating system. As described by Brendan Gregg, eBPF allows sandboxed programs to run directly within the kernel in response to specific events, without requiring changes to the kernel source code or loading potentially unstable kernel modules @greggBpfPerformanceTools2019. This provides a safe, performant, and dynamic way to implement custom logic at the lowest levels of the operating system. He has also evocatively described eBPF as being "like JavaScript for the Linux kernel," a comparison that highlights its event-driven nature and its role in making a traditionally static component programmable @EBPFDocumentary.
+The core mechanism that makes Lockne possible is the extended Berkeley Packet Filter (eBPF). To understand its importance, one must see it not merely as a tool, but as one of the most significant architectural shifts in the Linux kernel in the last decade @riceLearningEBPFProgramming2023. It represents a move away from a monolithic kernel with a fixed set of features toward a more programmable and extensible operating system. As described by Brendan Gregg, eBPF allows sandboxed programs to run directly within the kernel in response to specific events, without requiring changes to the kernel source code or loading potentially unstable kernel modules @greggBpfPerformanceTools2019. This provides a safe, performant, and dynamic way to implement custom logic at the lowest levels of the operating system. He has also evocatively described eBPF as being "like JavaScript for the Linux kernel," a comparison that highlights its event-driven nature and its role in making a traditionally static component programmable @EBPFDocumentary.
 
 === Life without eBPF: The Old Ways of Kernel Extension
 
@@ -37,7 +37,7 @@ While its origins are in networking, eBPF's general-purpose design has led to it
 
 ==== High-Performance Networking
 This remains eBPF's primary domain. It is used to implement load balancers, Distributed Denial of Service (DDoS) mitigation, and complex virtual networking for container orchestration.
-- *XDP (eXpress Data Path)* programs provide the highest possible performance, running directly in the network driver. They are ideal for use cases like DDoS mitigation, where millions of malicious packets per second can be dropped before they consume significant system resources.
+- *XDP (eXpress Data Path)* programs provide the highest possible performance, running directly in the network driver @hoilandjorgensenExpressDataPath2018. They are ideal for use cases like DDoS mitigation, where millions of malicious packets per second can be dropped before they consume significant system resources.
 - *TC (Traffic Control)* programs, as used by Lockne, run later in the networking stack. While slightly slower than XDP, they have access to more packet metadata, making them ideal for more complex routing and policy decisions. Projects like the Cilium CNI for Kubernetes are built almost entirely on eBPF's networking capabilities.
 
 ==== Granular System Observability
@@ -55,7 +55,7 @@ The growth of eBPF has been accompanied by a rapid evolution in the tools and li
 
 ==== The `libbpf` Ecosystem: A Bridge to C
 
-The standard, canonical way to load and manage eBPF programs from C/C++ applications is the `libbpf` library, which is co-developed with the Linux kernel itself. The `libbpf-rs` crate provides safe, idiomatic Rust bindings to this underlying C library.
+The standard, canonical way to load and manage eBPF programs from C/C++ applications is the `libbpf` library, which is co-developed with the Linux kernel itself. The `libbpf-rs` crate provides safe, idiomatic Rust bindings to this underlying C library @libbpfrsRustBindings2023.
 
 This approach is mature and battle-tested. It allows a Rust userspace application to leverage the full power of the CO-RE loader developed by the kernel community. However, a typical `libbpf-rs` project maintains a strong link to the C toolchain: the eBPF programs themselves are typically written in C and compiled with Clang, while only the userspace loader is written in Rust.
 
@@ -63,7 +63,7 @@ During the initial design phase of Lockne, this path was considered. However, it
 
 ==== The `Aya` Ecosystem: A Pure-Rust Implementation
 
-For these reasons, the final decision was to build Lockne using `Aya`. `Aya` takes a radically different and more ambitious approach. It is a complete eBPF toolchain and library implemented *entirely in Rust*. It does not depend on `libbpf` or any other C libraries. This pure-Rust philosophy is not merely an aesthetic choice; it provides several powerful, concrete advantages that make it the ideal choice for this project:
+For these reasons, the final decision was to build Lockne using `Aya`. `Aya` takes a radically different and more ambitious approach @ayaRustEBPFLibrary2024. It is a complete eBPF toolchain and library implemented *entirely in Rust*. It does not depend on `libbpf` or any other C libraries. This pure-Rust philosophy is not merely an aesthetic choice; it provides several powerful, concrete advantages that make it the ideal choice for this project:
 
 1. *A Unified Language and Build System:* Both the in-kernel eBPF program and the userspace loader are written in Rust. This provides a seamless development experience within a single, powerful language and its unified build system, Cargo.
 
@@ -120,7 +120,7 @@ This analysis delves into the specific architectural decisions of WireGuard that
 
 At its core, WireGuard's design is guided by a strong focus on simplicity. This is most clear in its codebase. The entire kernel-resident implementation consists of around 4,000 lines of C code, a figure that seems minimal when compared to the hundreds of thousands of lines that make up alternatives like OpenVPN or the IPsec suite @donenfeldWireGuardNextGeneration2017.
 
-This is not just an aesthetic choice; it is a fundamental security principle. A smaller codebase dramatically reduces the potential attack surface and makes a full security audit not just possible, but practical @salterWireGuardVPNReview2018. The complexity of a system is a direct enemy of its security. With fewer lines of code, there are fewer places for subtle bugs to hide. This simplicity extends to its state management. WireGuard gets rid of the complex, multi-stage handshake protocols common in other VPNs. There is no concept of a user "connecting" or "disconnecting." If a peer has the correct public key, it can send encrypted data; if not, the interface stays silent, not even responding to unknown packets. This "stealthy by default" behavior makes WireGuard servers difficult to scan for online, further reducing their exposure. For the end-user, this means tunnels are established transparently and reliably, which aligns perfectly with Lockne's goal of being easy to use.
+This is not just an aesthetic choice; it is a fundamental security principle. A smaller codebase dramatically reduces the potential attack surface and makes a full security audit not just possible, but practical @salterWireGuardVPNReview2018. The complexity of a system is a direct enemy of its security. With fewer lines of code, there are fewer places for subtle bugs to hide. This simplicity extends to its state management. WireGuard gets rid of the complex, multi-stage handshake protocols common in other VPNs. It uses a single round trip key exchange based on the Noise Protocol Framework @perrinNoiseProtocolFramework. There is no concept of a user "connecting" or "disconnecting." If a peer has the correct public key, it can send encrypted data; if not, the interface stays silent, not even responding to unknown packets. This "stealthy by default" behavior makes WireGuard servers difficult to scan for online, further reducing their exposure. For the end-user, this means tunnels are established transparently and reliably, which aligns perfectly with Lockne's goal of being easy to use.
 
 === Kernel-Native Performance
 
@@ -201,7 +201,7 @@ Modern systems are inherently concurrent, and the Lockne daemon is no exception.
 
 Rust's ownership model extends to concurrency, providing a powerful guarantee: if your code compiles, it is free of data races. A data race occurs when multiple threads access the same memory location concurrently, with at least one of them being a write, leading to unpredictable behavior. Rust's type system encodes whether a type can be safely transferred across threads (`Send` trait) or accessed from multiple threads simultaneously (`Sync` trait). The compiler enforces these rules, making it possible to write complex multi-threaded or asynchronous code with a high degree of confidence.
 
-This "fearless concurrency" is leveraged in Lockne through the `async/await` syntax and the Tokio runtime, an industry-standard framework for writing asynchronous applications. This allows the control plane to manage thousands of concurrent I/O operations—like listening on sockets for process events—with minimal overhead and without the risk of race conditions that plague traditional concurrent systems code.
+This "fearless concurrency" is leveraged in Lockne through the `async/await` syntax and the Tokio runtime, an industry-standard framework for writing asynchronous applications @tokioAsyncRuntimeRust2024. This allows the control plane to manage thousands of concurrent I/O operations—like listening on sockets for process events—with minimal overhead and without the risk of race conditions that plague traditional concurrent systems code.
 
 === Trade-offs and Acknowledged Challenges
 
@@ -219,7 +219,9 @@ To fully justify the choice of Rust, it is useful to compare it against other la
 
 A key architectural decision was the choice of framework for integrating Rust with the eBPF subsystem. While the `libbpf-rs` crate provides a mature bridge to the traditional C-based `libbpf` ecosystem, the decision was made to use the `Aya` framework.
 
-`Aya` is a pure-Rust eBPF library and toolchain that allows both the userspace control plane and the in-kernel eBPF programs to be written entirely in Rust. This unified approach provides significant advantages in terms of compile-time safety, especially for data structures shared between userspace and the kernel, and it simplifies the build and deployment process by removing dependencies on C libraries. A full justification for this choice, including a detailed comparison of the toolchain ecosystems, is provided in the preceding chapter on the eBPF programming model.
+`Aya` is a pure-Rust eBPF library and toolchain that allows both the userspace control plane and the in-kernel eBPF programs to be written entirely in Rust @ayaBook. This unified approach provides significant advantages in terms of compile-time safety, especially for data structures shared between userspace and the kernel, and it simplifies the build and deployment process by removing dependencies on C libraries.
+
+ A full justification for this choice, including a detailed comparison of the toolchain ecosystems, is provided in the preceding chapter on the eBPF programming model.
 
 == Process-to-Socket Mapping: The Core Challenge
 
