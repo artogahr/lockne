@@ -41,10 +41,7 @@
 }
 
 This chapter presents the results of developing and testing Lockne.
- The implementation successfully demonstrates that per-application traffic routing using eBPF is both feasible and performant. The following sections detail what was achieved, present performance measurements, and discuss the implications.
-
-== Implementation Summary
- The implementation successfully demonstrates that per-application traffic routing using eBPF is both feasible and performant. The following sections detail what was achieved, present performance measurements, and discuss the implications.
+The implementation successfully demonstrates that per-application traffic routing using eBPF is both feasible and performant. The following sections detail what was achieved, present performance measurements, and discuss the implications.
 
 == Implementation Summary
 

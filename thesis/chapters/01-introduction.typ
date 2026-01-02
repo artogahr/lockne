@@ -15,7 +15,7 @@ Consider a practical scenario: a user may wish to secure the traffic of a specif
 
 == The Problem of Per-Application Routing
 
-Achieving per-application traffic control on Linux has traditionally been challenging. The operating system's networking stack is designed around interfaces and routing tables, not application identity. Packets flowing through the network layer do not inherently carry information about which process created them.
+Achieving per-application traffic control on Linux has traditionally been challenging. The operating system's networking stack is designed around interfaces and routing tables, not application identity. Packets flowing through the network layer do not inherently carry information about which process created them. This disconnect makes it difficult to implement Zero Trust Architecture principles, which advocate for granular, identity-based access controls rather than broad network-level trust @rose2020zerotrust.
 
 Existing solutions fall into several categories, each with significant drawbacks:
 

@@ -20,11 +20,11 @@ eBPF was created to provide a new option, one that offers the performance of in-
 
 === From Packet Filtering to an In-Kernel Virtual Machine
 
-The original Berkeley Packet Filter (BPF), now often called classic BPF (cBPF), was designed in the 1990s with a single purpose: to filter network packets efficiently for userspace tools like `tcpdump`. It was a simple, register-based virtual machine that could make a quick decision on whether to accept or drop a packet.
+The original Berkeley Packet Filter (BPF), now often called classic BPF (cBPF), was designed in the 1990s @mccanne1993bsd with a single purpose: to filter network packets efficiently for userspace tools like `tcpdump`. It was a simple, register-based virtual machine that could make a quick decision on whether to accept or drop a packet.
 
 eBPF, introduced in 2014, is a complete redesign and generalization of this concept. It expands the original architecture into a general-purpose, 64-bit RISC-like virtual machine that runs inside the kernel. At its heart is an instruction set architecture (ISA) with eleven 64-bit registers, a program counter, and a 512-byte stack. eBPF programs are compiled from a restricted form of C into this instruction set.
 
-The most critical component of the eBPF architecture is the in-kernel *verifier*. Before any eBPF program is loaded, it must pass an exhaustive static analysis by this verifier. The verifier checks for a multitude of safety properties:
+The most critical component of the eBPF architecture is the in-kernel *verifier*. Before any eBPF program is loaded, it must pass an exhaustive static analysis by this verifier @gershuni2019simple. The verifier checks for a multitude of safety properties:
 - It ensures the program is a directed acyclic graph (DAG), guaranteeing that it will terminate and not contain infinite loops that could lock up the kernel.
 - It performs sophisticated data flow analysis to ensure that no pointers are used before being checked for `NULL`.
 - It validates all memory access, preventing out-of-bounds reads or writes to both the eBPF stack and any data from the kernel.
@@ -138,7 +138,7 @@ This back-and-forth, known as context switching, happens for every packet and cr
 
 Many security problems in the past came from flawed or outdated cryptography. Older protocols like IPsec and TLS were often designed with "crypto-agility," meaning they support a long list of encryption algorithms that can be negotiated between peers. While flexible, this is a common source of weakness. It opens the door to downgrade attacks, where an attacker tricks two sides into using an older, weaker algorithm.
 
-WireGuard rejects this model. Instead, it is "opinionated" and uses a single, fixed set of modern, high-speed cryptographic primitives: Curve25519 for key exchange, ChaCha20 for symmetric encryption, Poly1305 for authentication, and BLAKE2s for hashing @donenfeldWireGuardNextGeneration2017. There is no negotiation to attack. This rigidity eliminates entire classes of vulnerabilities. If a flaw were ever found in one of the primitives, the solution would be to create a new version of the WireGuard protocol itself. This philosophy provides a much stronger promise of security over the long term and ensures that all tunneled traffic benefits from state-of-the-art protection without complex setup.
+WireGuard rejects this model. Instead, it is "opinionated" and uses a single, fixed set of modern, high-speed cryptographic primitives: Curve25519 for key exchange, ChaCha20 for symmetric encryption @rfc7539, Poly1305 for authentication, and BLAKE2s for hashing @donenfeldWireGuardNextGeneration2017. There is no negotiation to attack. This rigidity eliminates entire classes of vulnerabilities. If a flaw were ever found in one of the primitives, the solution would be to create a new version of the WireGuard protocol itself. This philosophy provides a much stronger promise of security over the long term and ensures that all tunneled traffic benefits from state-of-the-art protection without complex setup.
 
 === Architectural Synergy: A Natural Fit for eBPF Redirection
 
@@ -158,9 +158,9 @@ This direct, in-kernel handoff is what makes the combination of eBPF and WireGua
 
 To understand WireGuard's importance, it is helpful to contrast it with the protocols that came before it.
 
-- *IPsec:* The Internet Protocol Security suite is the "enterprise standard" for securing network traffic. While powerful, IPsec is known for being very complex. It is not a single protocol but a large framework of many components. This complexity makes it difficult to configure correctly, and mistakes can easily lead to security holes @fergusonPracticalCryptography2003. WireGuard's simplicity is a direct response to this legacy of complexity.
+- *IPsec:* The Internet Protocol Security suite @rfc4301 is the "enterprise standard" for securing network traffic. While powerful, IPsec is known for being very complex. It is not a single protocol but a large framework of many components. This complexity makes it difficult to configure correctly, and mistakes can easily lead to security holes @fergusonPracticalCryptography2003. WireGuard's simplicity is a direct response to this legacy of complexity.
 
-- *OpenVPN:* As a userspace tool built on the OpenSSL library, OpenVPN has been a reliable choice for years. Its main benefit is its ability to run over TCP, which can help bypass restrictive firewalls. However, as noted earlier, its userspace design comes with a significant performance cost. Its configuration is also far more complex than WireGuard's, presenting a larger attack surface.
+- *OpenVPN:* As a userspace tool built on the OpenSSL library, OpenVPN has been a reliable choice for years @zhengjun2007openvpn. Its main benefit is its ability to run over TCP, which can help bypass restrictive firewalls. However, as noted earlier, its userspace design comes with a significant performance cost. Its configuration is also far more complex than WireGuard's, presenting a larger attack surface.
 
 In this context, WireGuard is a major step forward. It provides the in-kernel performance that was once only available with complex IPsec setups, but with a level of simplicity and security that surpasses even userspace tools.
 
@@ -180,7 +180,7 @@ Rust's design philosophy is guided by the principle of enabling developers to wr
 
 ==== Memory Safety without a Garbage Collector
 
-The most significant advantage Rust offers for software like Lockne is its compile-time enforcement of memory safety. In languages like C or C++, a large percentage of critical security vulnerabilities and random crashes stem from memory management errors: use-after-free, double-free, buffer overflows, and null pointer dereferencing. A single memory corruption bug in a long-running network daemon could compromise the entire system's security or lead to unpredictable service interruptions.
+The most significant advantage Rust offers for software like Lockne is its compile-time enforcement of memory safety, a property formally verified by the RustBelt project @jung2017rustbelt. In languages like C or C++, a large percentage of critical security vulnerabilities and random crashes stem from memory management errors: use-after-free, double-free, buffer overflows, and null pointer dereferencing. A single memory corruption bug in a long-running network daemon could compromise the entire system's security or lead to unpredictable service interruptions.
 
 Rust eradicates these entire classes of bugs through its ownership system, a novel approach enforced by the compiler's "borrow checker" @klabnikRustProgrammingLanguage2023. The rules are simple in principle:
 1. Each value in Rust has a variable that’s called its _owner_.
@@ -283,7 +283,7 @@ This stateful approach is powerful, but it introduces its own set of challenges 
 The problem of per-application traffic control is not new. Several solutions exist, each with a different approach and a different set of trade-offs. This analysis of the state of the art is crucial for positioning Lockne and justifying its novel architecture.
 === Linux Networking Subsystem Analysis: The Native Toolset
 
-Before justifying the use of a complex technology like eBPF, it is essential to rigorously evaluate the capabilities of the standard Linux networking subsystem. The kernel provides a powerful, albeit complex, set of native tools for routing and filtering traffic, primarily centered around Netfilter, policy routing, and the Traffic Control (TC) subsystem. This section analyzes these tools and demonstrates why, despite their power, they are fundamentally ill-suited for the dynamic, per-application routing that Lockne aims to provide.
+Before justifying the use of a complex technology like eBPF, it is essential to rigorously evaluate the capabilities of the standard Linux networking subsystem @rosen2014linux. The kernel provides a powerful, albeit complex, set of native tools for routing and filtering traffic, primarily centered around Netfilter, policy routing, and the Traffic Control (TC) subsystem. This section analyzes these tools and demonstrates why, despite their power, they are fundamentally ill-suited for the dynamic, per-application routing that Lockne aims to provide.
 
 ==== Netfilter and `iptables`: The Packet Filtering Workhorse
 Netfilter is the primary firewalling framework within the Linux kernel. For decades, the `iptables` userspace utility has been the standard interface for configuring its rules. At first glance, `iptables` seems like a plausible candidate for solving the per-application routing problem, particularly due to its "owner" match module.
@@ -315,7 +315,7 @@ The TC subsystem itself, where Lockne's eBPF program attaches, has its own nativ
 However, the native TC classifiers suffer from the same fundamental problem as the rest of the traditional toolset: a lack of process context. TC filters can match on IP headers, port numbers, firewall marks, and other packet-level data, but they have no built-in mechanism for identifying the originating process of a given packet. This is precisely the gap that eBPF was designed to fill. By allowing programmable logic at the TC layer, eBPF gives the subsystem the "eyes" it needs to see the process-level context that was previously unavailable.
 
 ==== Control Groups (cgroups) Networking
-Control Groups, particularly in their modern `v2` incarnation, provide mechanisms to manage network resources. For example, a network administrator can limit the bandwidth available to a specific cgroup. The `net_cls` controller can even be used to "tag" all traffic originating from a cgroup with a class ID, which can then be used by the TC subsystem.
+Control Groups, particularly in their modern `v2` incarnation @cgroupv2, provide mechanisms to manage network resources. For example, a network administrator can limit the bandwidth available to a specific cgroup. The `net_cls` controller can even be used to "tag" all traffic originating from a cgroup with a class ID, which can then be used by the TC subsystem.
 
 This gets us one step closer. We can indeed put a single application into its own cgroup. However, using this mechanism for routing still requires stitching it together with the TC and policy routing systems. It is not a standalone solution. While it provides the process isolation we need, it doesn't provide the dynamic redirection mechanism. eBPF, by contrast, provides both in a single, unified framework. An eBPF program can be attached directly to the cgroup to get process context and perform the redirection itself, without needing to be chained together with two or three other kernel subsystems.
 
@@ -335,7 +335,7 @@ The administrative overhead and lack of dynamic control make these solutions uns
 
 === Containerization and Network Namespaces: The "Heavy Hammer" Approach
 
-Containerization technologies, such as Docker and Podman, and related sandboxing tools like Firejail, offer a very different approach to traffic isolation. They create isolated environments with their own network stacks, effectively sandboxing an application and all its network traffic.
+Containerization technologies, such as Docker @merkel2014docker and Podman, and related sandboxing tools like Firejail, offer a very different approach to traffic isolation. They create isolated environments with their own network stacks, effectively sandboxing an application and all its network traffic.
 
 - *Mechanism:* These technologies leverage Linux network namespaces, which provide complete isolation of the network environment, including network interfaces, routing tables, and firewall rules. A containerized application operates within its own network namespace, preventing it from directly accessing the host system's network interfaces. All traffic from the container must be explicitly routed through virtual interfaces.
 

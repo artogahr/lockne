@@ -14,6 +14,16 @@
   urldate = {2025-01-15}
 }
 
+@techreport{cgroupv2,
+  author = {Heo, Tejun},
+  title = {{Control Group v2}},
+  institution = {The Linux Kernel},
+  year = {2015},
+  month = {October},
+  note = {Authoritative documentation on the design, interface and conventions of cgroup v2. Available in the Linux kernel source tree under \texttt{Documentation/admin-guide/cgroup-v2.rst} or \texttt{Documentation/cgroup-v2.txt}.},
+  url = {https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html}
+}
+
 @inproceedings{donenfeldWireGuardNextGeneration2017,
   title = {{{WireGuard}}: {{Next Generation Kernel Network Tunnel}}},
   shorttitle = {{{WireGuard}}},
@@ -48,6 +58,15 @@
   langid = {english}
 }
 
+@inproceedings{gershuni2019simple,
+  title={Simple and Precise Static Analysis of Untrusted Linux Kernel Extensions},
+  author={Gershuni, Elazar and Amit, Nadav and Gurfinkel, Arie and Narodytska, Nina and Navas, Jorge A and Rinetzky, Noam and Ryzhyk, Leonid and Sagiv, Mooly},
+  booktitle={Proceedings of the 40th ACM SIGPLAN Conference on Programming Language Design and Implementation (PLDI)},
+  pages={1069--1084},
+  year={2019},
+  doi={10.1145/3314221.3314590}
+}
+
 @book{greggBpfPerformanceTools2019,
   title = {Bpf Performance Tools: {{Linux}} System and Application Observability},
   shorttitle = {Bpf Performance Tools},
@@ -66,6 +85,18 @@
   year = {2018},
   pages = {54--66},
   doi = {10.1145/3281411.3281443}
+}
+
+@article{jung2017rustbelt,
+  title={RustBelt: Securing the Foundations of the Rust Programming Language},
+  author={Jung, Ralf and Jourdan, Jacques-Henri and Krebbers, Robbert and Dreyer, Derek},
+  journal={Proceedings of the ACM on Programming Languages},
+  volume={2},
+  number={POPL},
+  pages={66},
+  year={2017},
+  publisher={ACM New York, NY, USA},
+  doi={10.1145/3158154}
 }
 
 @book{klabnikRustProgrammingLanguage2023,
@@ -87,11 +118,62 @@
   urldate = {2025-01-15}
 }
 
+@inproceedings{mccanne1993bsd,
+  title={The BSD Packet Filter: A New Architecture for User-level Packet Capture},
+  author={McCanne, Steven and Jacobson, Van},
+  booktitle={Proceedings of the USENIX Winter 1993 Conference Proceedings on USENIX Winter 1993 Conference Proceedings},
+  pages={2--2},
+  year={1993},
+  publisher={USENIX Association},
+  address={San Diego, CA}
+}
+
+@article{merkel2014docker,
+  title={Docker: Lightweight Linux Containers for Consistent Development and Deployment},
+  author={Merkel, Dirk},
+  journal={Linux Journal},
+  volume={2014},
+  number={239},
+  pages={2},
+  year={2014},
+  publisher={Belltown Media}
+}
+
 @article{perrinNoiseProtocolFramework,
   title = {The {{Noise Protocol Framework}}},
   author = {Perrin, Trevor},
   langid = {english},
   file = {/home/arto/Zotero/storage/XKPU7GBX/Perrin - The Noise Protocol Framework.pdf}
+}
+
+@misc{rfc4301,
+  series = {Request for Comments},
+  number = 4301,
+  howpublished = {RFC 4301},
+  publisher = {RFC Editor},
+  doi = {10.17487/RFC4301},
+  url = {https://www.rfc-editor.org/info/rfc4301},
+  author = {Karen Seo and Stephen Kent},
+  title = {{Security Architecture for the Internet Protocol}},
+  pagetotal = 101,
+  year = 2005,
+  month = dec,
+  abstract = {This document describes an updated version of the "Security Architecture for IP", which is designed to provide security services for traffic at the IP layer. This document obsoletes RFC 2401 (November 1998). {[}STANDARDS-TRACK{]}},
+}
+
+@misc{rfc7539,
+  series = {Request for Comments},
+  number = 7539,
+  howpublished = {RFC 7539},
+  publisher = {RFC Editor},
+  doi = {10.17487/RFC7539},
+  url = {https://www.rfc-editor.org/info/rfc7539},
+  author = {Yoav Nir and Adam Langley},
+  title = {{ChaCha20 and Poly1305 for IETF Protocols}},
+  pagetotal = 45,
+  year = 2015,
+  month = may,
+  abstract = {This document defines the ChaCha20 stream cipher as well as the use of the Poly1305 authenticator, both as stand-alone algorithms and as a "combined mode", or Authenticated Encryption with Associated Data (AEAD) algorithm. This document does not introduce any new crypto, but is meant to serve as a stable reference and an implementation guide. It is a product of the Crypto Forum Research Group (CFRG). For the definition of Status, see RFC 2026. For the definition of Stream, see RFC 8729.}
 }
 
 @book{riceLearningEBPFProgramming2023,
@@ -106,6 +188,26 @@
   isbn = {978-1-0981-3509-6},
   langid = {english},
   file = {/home/arto/Zotero/storage/SPDZ84YU/Rice - 2023 - Learning eBPF programming the Linux kernel for enhanced observability, networking, and security.pdf}
+}
+
+@misc{rose2020zerotrust,
+  author = {Scott Rose and Oliver Borchert and Stuart Mitchell and Sean Connelly},
+  title = {Zero Trust Architecture},
+  year = {2020},
+  month = {2020-08-10 04:08:00},
+  publisher = {Special Publication (NIST SP), National Institute of Standards and Technology, Gaithersburg, MD},
+  url = {https://tsapps.nist.gov/publication/get_pdf.cfm?pub_id=930420},
+  doi = {https://doi.org/10.6028/NIST.SP.800-207},
+  language = {en},
+}
+
+@book{rosen2014linux,
+  title={Linux Kernel Networking: Implementation and Theory},
+  author={Rosen, Rami},
+  year={2014},
+  publisher={Apress},
+  address={New York, NY},
+  isbn={978-1-4302-6196-4}
 }
 
 @misc{salterWireGuardVPNReview2018,
@@ -127,4 +229,12 @@
   year = {2024},
   url = {https://tokio.rs/},
   urldate = {2025-01-15}
+}
+
+@article{zhengjun2007openvpn,
+  title={Investigation on Security of OpenVPN Architecture},
+  author={Zhai Zheng-jun},
+  journal={Science Technology and Engineering},
+  year={2007},
+  url={https://api.semanticscholar.org/CorpusID:64117980}
 }
