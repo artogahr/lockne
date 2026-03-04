@@ -41,6 +41,8 @@
   #text(14pt)[Faculty of Economics and Management, CZU Prague]
   #v(0.8em)
   #text(14pt)[Supervisor: Ing. Martin Havránek, Ph.D.]
+  #v(0.6em)
+  #text(12pt, fill: rgb("#64748b"))[Built with Rust, Aya (eBPF) · NixOS-reproducible]
 ]
 
 #pagebreak()
@@ -54,6 +56,10 @@
   - *Performance*: Routing all traffic through a VPN adds latency and can hurt games, video calls, and streaming.
   - *Flexibility*: Some services block VPN traffic; local network resources become inaccessible.
   - *Granularity*: Linux routes by interfaces, not by application identity – packets do not carry a PID.
+
+  #block(fill: accent-soft, inset: 10pt, radius: 4pt, width: 100%)[
+    #text(14pt)[*Example:* Route only the browser through VPN for privacy, while games and *git push* use the direct connection – one policy per app, no containers.]
+  ]
 
   The core problem: How can we route traffic per application on Linux, without containers or heavy userspace proxies?
 ]
@@ -73,7 +79,8 @@
   - *System-wide VPNs*:
     No per-application granularity; everything is tunneled.
 
-  Gap: There is no lightweight, kernel-native mechanism for dynamic per-application VPN routing on Linux.
+  #v(0.6em)
+  #text(15pt, weight: "bold", fill: accent)[Lockne fills this gap: kernel-native, per-application routing without containers or proxies.]
 ]
 
 #pagebreak()
@@ -149,34 +156,38 @@
 
 #pagebreak()
 
-= Connection Tracking (cgroup program)
+= How Lockne Works – Step 1: Connection Tracking
 
 #block(width: 100%)[
   #align(center)[
     #text(size: 13pt, weight: "bold")[At connection time]
     #v(0.4em)
+    #text(size: 11pt, fill: rgb("#64748b"))[①]
     #diag-box("User process (PID)", fill: rgb("#e3f2fd"), width: 170pt)
     #v(0.2em)
     #text(size: 12pt)[connect()]
     #v(0.15em)
     #text(size: 12pt)[↓]
     #v(0.15em)
+    #text(size: 11pt, fill: rgb("#64748b"))[②]
     #diag-box("cgroup/sock_addr eBPF\n(lockne_connect4)", fill: rgb("#fff9c4"), width: 190pt)
     #v(0.15em)
     #text(size: 12pt)[↓ store cookie & PID]
     #v(0.15em)
+    #text(size: 11pt, fill: rgb("#64748b"))[③]
     #diag-box("SOCKET_PID_MAP\ncookie → PID", fill: rgb("#c8e6c9"), width: 190pt)
   ]
 ]
 
 #pagebreak()
 
-= Packet Classification & Redirect (TC program)
+= How Lockne Works – Step 2: Packet Redirect
 
 #block(width: 100%)[
   #align(center)[
     #text(size: 13pt, weight: "bold")[At packet time]
     #v(0.4em)
+    #text(size: 11pt, fill: rgb("#64748b"))[④]
     #diag-box("Outgoing packet (sk_buff)", fill: rgb("#fff9c4"), width: 190pt)
     #v(0.15em)
     #text(size: 12pt)[↓ TC egress hook]
@@ -215,13 +226,15 @@
 
   #v(0.8em)
 
-  *Performance highlights (measured):*
+  *Measured (thesis Ch. 5; benchmarks in repo: `benchmarks/simple_bench.sh`, etc.):*
 
-  - Latency overhead: < 1 ms compared to baseline (no interception).
-  - CPU utilization: < 1% additional CPU under test workloads.
-  - Throughput: no measurable degradation vs baseline (using `iperf3`).
+  - Latency: no measurable overhead (median HTTP e.g. 36 ms baseline vs 32 ms Lockne – within variance).
+  - CPU: \<1% average, ~1.5% peak during 200 requests.
+  - Throughput: no measurable impact (iperf3: 162 vs 164 Mbit/s).
 
   #v(0.6em)
+  *Architectural comparison (from thesis analysis, not head-to-head benchmark):*
+  #v(0.3em)
   #block(width: 100%)[
     #set text(size: 13pt)
     #table(
@@ -232,9 +245,38 @@
       table.hline(),
       [Processing], [Kernel (TC hook)], [Userspace (LD_PRELOAD)], [Context switch per packet],
       [Data copies], [Zero-copy redirect], [Double copy], [Higher memory bandwidth use],
-      [Per-packet latency], [~60 ns], [~10–50 µs], [~100–1000× slower],
+      [Per-packet latency], [~60 ns (est.)], [~10–50 µs (lit.)], [~100–1000× difference],
       table.hline(),
     )
+  ]
+]
+
+#pagebreak()
+
+#align(center + horizon)[
+  #v(2em)
+  = Takeaway
+
+  #v(1.2em)
+  #grid(
+    columns: (1fr, 1fr),
+    gutter: 2em,
+    align: center + horizon,
+    block(fill: rgb("#fef2f2"), inset: 1em, radius: 8pt, width: 100%)[
+      #text(14pt, weight: "bold")[Without Lockne]
+      #v(0.5em)
+      #text(13pt)[All traffic → VPN, or heavy userspace proxy per packet.]
+    ],
+    block(fill: rgb("#f0fdf4"), inset: 1em, radius: 8pt, width: 100%)[
+      #text(14pt, weight: "bold")[With Lockne]
+      #v(0.5em)
+      #text(13pt)[Per-app policy; routing in kernel, zero-copy redirect.]
+    ],
+  )
+
+  #v(1.5em)
+  #block(fill: accent-soft, inset: 0.8em, radius: 8pt, width: 90%)[
+    #text(16pt, weight: "bold", fill: accent)[\<1 ms latency · \<1% CPU · no throughput loss]
   ]
 ]
 
@@ -245,19 +287,9 @@
 
   #v(0.8em)
 
-  *Current limitations:*
+  *Limitations:* Pre-existing connections not tracked; child processes not in parent policy; no map cleanup on socket close; WireGuard redirect works, full tunnel lifecycle not in scope.
 
-  - Pre-existing connections: sockets created before Lockne starts are not tracked (no initial cookie mapping).
-  - Process hierarchy: child processes of tracked applications are not automatically included in the parent's policy.
-  - Map cleanup: entries are not removed on socket close; long-running deployments could exhaust map capacity.
-  - WireGuard integration: redirect to existing `wg` interfaces works, but full tunnel lifecycle management is not implemented.
-
-  *Future directions:*
-
-  - eBPF-based socket-close tracking or iterators for safe map cleanup.
-  - Fork/clone tracking to handle process trees.
-  - Higher-level UI and configuration for production deployment.
-  - Automated management of WireGuard tunnels from the Lockne daemon.
+  *Future work:* Map cleanup (eBPF iterators), fork tracking for process trees, WireGuard lifecycle in daemon, higher-level UI.
 ]
 
 #pagebreak()
@@ -274,8 +306,14 @@
   - *Practicality (RQ3)*:
     The CLI and TUI demonstrate that a user-friendly per-application VPN tool based on this architecture is realistic.
 
-  Lockne shows that a production-ready, kernel-native per-application VPN for Linux is achievable with modern eBPF and Rust tooling.
+  #v(0.8em)
+  #block(fill: accent-soft, inset: 12pt, radius: 6pt, width: 100%)[
+    #text(15pt, weight: "bold")[A production-ready, kernel-native per-application VPN for Linux is achievable with modern eBPF and Rust tooling.]
+  ]
 
-  Thank you for your attention.
+  #v(1.5em)
+  #text(20pt, weight: "bold")[Questions?]
+  #v(0.5em)
+  #text(16pt)[Thank you for your attention.]
 ]
 
